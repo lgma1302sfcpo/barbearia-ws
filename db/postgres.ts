@@ -3,9 +3,9 @@ import { neon } from '@neondatabase/serverless';
 let schemaPromise: Promise<void> | undefined;
 
 export function getSql() {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = process.env.BARBEARIA_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl) {
-    throw new Error('DATABASE_URL não está configurada. Conecte um banco Neon ao projeto da Vercel.');
+    throw new Error('BARBEARIA_URL não está configurada. Conecte o banco Neon ao projeto da Vercel.');
   }
   return neon(databaseUrl);
 }
