@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { Banknote, Beer, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Download, LoaderCircle, Pencil, Plus, ReceiptText, Scissors, Trash2, Users, WalletCards, X } from 'lucide-react';
+import { Banknote, Beer, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Download, LoaderCircle, LockKeyhole, LogOut, Pencil, Plus, ReceiptText, Scissors, Trash2, Users, WalletCards, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
@@ -21,6 +21,7 @@ const toCents = (value: string) => Math.round((Number(value.replace(',', '.')) |
 const displayDate = (date: string) => new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
 
 export default function Home() {
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [section, setSection] = useState<Section>('atendimentos');
   const [selectedDate, setSelectedDate] = useState(today);
   const [month, setMonth] = useState(today.slice(0, 7));
@@ -34,6 +35,7 @@ export default function Home() {
     if (!silent) setLoading(true); setError('');
     try {
       const response = await fetch(`/api/data?month=${month}`);
+      if (response.status === 401) { setAuthenticated(false); return; }
       if (!response.ok) throw new Error('Não foi possível carregar os lançamentos.');
       const payload = await response.json() as DataSet;
       setData(payload);
@@ -41,7 +43,8 @@ export default function Home() {
     finally { setLoading(false); }
   }, [month]);
 
-  useEffect(() => { void refresh(false); }, [refresh]);
+  useEffect(() => { void fetch('/api/auth').then(async (response) => await response.json() as { authenticated?: boolean }).then((result) => setAuthenticated(Boolean(result.authenticated))).catch(() => setAuthenticated(false)); }, []);
+  useEffect(() => { if (authenticated) void refresh(false); }, [authenticated, refresh]);
 
   const dayAppointments = data.appointments.filter((item) => item.date === selectedDate);
   const daySales = data.beverageSales.filter((item) => item.date === selectedDate);
@@ -73,6 +76,7 @@ export default function Home() {
       const scrollY = window.scrollY;
       const response = await fetch('/api/data', { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
       const result = await response.json() as { id?: number; error?: string };
+      if (response.status === 401) { setAuthenticated(false); return false; }
       if (!response.ok) { setError(result.error || 'Não foi possível salvar.'); return false; }
       if (method === 'POST' && payload.entity === 'appointment' && result.id) { setRecentlyAddedId(Number(result.id)); window.setTimeout(() => setRecentlyAddedId(null), 3200); }
       setNotice(success); window.setTimeout(() => setNotice(''), 2600); await refresh(true); window.requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'auto' })); return true;
@@ -85,6 +89,8 @@ export default function Home() {
     if (!response.ok) { setError('Não foi possível excluir o lançamento.'); return; }
     await refresh(true);
   }
+
+  async function logout() { await fetch('/api/auth', { method: 'DELETE' }); setData(emptyData); setAuthenticated(false); }
 
   function exportCsv() {
     const rows = [['Data', 'Profissional', 'Pagamento', 'Serviço', 'Cliente', 'Valor'], ...data.appointments.map((item) => [item.date, item.professional, item.payment, item.service, item.client, (item.amount_cents / 100).toFixed(2).replace('.', ',')])];
@@ -105,6 +111,8 @@ export default function Home() {
     return () => lifecycle.abort();
   }, [refresh]);
 
+  if (authenticated !== true) return <PinGate checking={authenticated === null} onUnlock={() => { setAuthenticated(true); setLoading(true); }} />;
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b border-white/10 bg-[#172b36] text-white shadow-sm">
@@ -113,7 +121,7 @@ export default function Home() {
           <nav className="order-3 flex w-full gap-1 overflow-x-auto sm:order-2 sm:w-auto" aria-label="Seções">
             <Nav active={section === 'atendimentos'} onClick={() => setSection('atendimentos')} icon={<Scissors />}>Atendimentos</Nav><Nav active={section === 'bebidas'} onClick={() => setSection('bebidas')} icon={<Beer />}>Bebidas</Nav><Nav active={section === 'gastos'} onClick={() => setSection('gastos')} icon={<ReceiptText />}>Gastos</Nav><Nav active={section === 'resumo'} onClick={() => setSection('resumo')} icon={<CircleDollarSign />}>Resumo mensal</Nav>
           </nav>
-          <Button className="order-2 h-9 bg-[#f2a24a] px-3 font-bold text-[#172b36] hover:bg-[#ffb65f] sm:order-3" onClick={() => document.getElementById('entry-form')?.scrollIntoView({ behavior: 'smooth' })}><Plus /> Lançar</Button>
+          <div className="order-2 flex gap-2 sm:order-3"><Button variant="ghost" className="h-9 text-white/70 hover:bg-white/10 hover:text-white" onClick={() => void logout()}><LogOut /> Bloquear</Button><Button className="h-9 bg-[#f2a24a] px-3 font-bold text-[#172b36] hover:bg-[#ffb65f]" onClick={() => document.getElementById('entry-form')?.scrollIntoView({ behavior: 'smooth' })}><Plus /> Lançar</Button></div>
         </div>
       </header>
 
@@ -143,6 +151,12 @@ export default function Home() {
       </div>
     </main>
   );
+}
+
+function PinGate({ checking, onUnlock }: { checking: boolean; onUnlock: () => void }) {
+  const [pin, setPin] = useState(''), [error, setError] = useState(''), [submitting, setSubmitting] = useState(false);
+  async function submit(event: FormEvent) { event.preventDefault(); setError(''); setSubmitting(true); try { const response = await fetch('/api/auth', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pin }) }); const result = await response.json() as { error?: string }; if (!response.ok) { setError(result.error || 'PIN incorreto.'); setPin(''); return; } onUnlock(); } catch { setError('Não foi possível entrar.'); } finally { setSubmitting(false); } }
+  return <main className="grid min-h-screen place-items-center bg-[#172b36] px-4"><section className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#fffdf9] p-7 shadow-2xl"><span className="mb-5 grid size-12 place-items-center rounded-2xl bg-[#f2a24a] text-[#172b36]"><LockKeyhole className="size-6" /></span><p className="text-xs font-bold uppercase tracking-[.16em] text-[#a45113]">Área protegida</p><h1 className="mt-1 text-2xl font-black text-[#172b36]">Controle de repasses</h1><p className="mt-2 text-sm text-muted-foreground">Digite o PIN para abrir o sistema da barbearia.</p>{checking ? <div className="mt-7 flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Verificando acesso...</div> : <form onSubmit={submit} className="mt-6 grid gap-3"><Field label="PIN"><Input autoFocus type="password" inputMode="numeric" autoComplete="current-password" maxLength={8} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, ''))} placeholder="••••" className="h-12 text-center text-xl font-black tracking-[.45em]" required /></Field>{error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p>}<Button type="submit" disabled={submitting || pin.length < 4} className="mt-1 h-11 bg-[#f2a24a] font-bold text-[#172b36] hover:bg-[#ffb65f]">{submitting ? <LoaderCircle className="animate-spin" /> : <LockKeyhole />} Entrar</Button></form>}</section></main>;
 }
 
 function Appointments({ items, totals, selectedDate, save, remove, monthly, recentlyAddedId }: { items: Appointment[]; totals: ReturnType<typeof dayTotals>; selectedDate: string; save: (payload: Record<string, unknown>, success: string, method?: 'POST' | 'PATCH') => Promise<boolean>; remove: (entity: string, id: number) => Promise<void>; monthly: ReturnType<typeof monthTotals>; recentlyAddedId: number | null }) {

@@ -1,10 +1,12 @@
 import { env } from 'cloudflare:workers';
+import { isAuthenticated } from '@/app/auth';
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 const clean = (value: unknown, max = 120) => String(value ?? '').trim().slice(0, max);
 const positiveInt = (value: unknown) => Math.max(0, Math.round(Number(value) || 0));
 
 export async function GET(request: Request) {
+  if (!(await isAuthenticated(request))) return json({ error: 'Não autorizado.' }, 401);
   const url = new URL(request.url);
   const month = /^\d{4}-\d{2}$/.test(url.searchParams.get('month') ?? '') ? url.searchParams.get('month')! : new Date().toISOString().slice(0, 7);
   const pattern = `${month}-%`;
@@ -18,6 +20,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!(await isAuthenticated(request))) return json({ error: 'Não autorizado.' }, 401);
   const body = await request.json() as Record<string, unknown>;
   const entity = clean(body.entity, 30);
   const now = new Date().toISOString();
@@ -55,6 +58,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  if (!(await isAuthenticated(request))) return json({ error: 'Não autorizado.' }, 401);
   const body = await request.json() as Record<string, unknown>;
   const id = positiveInt(body.id), date = clean(body.date, 10), professional = clean(body.professional, 30), service = clean(body.service), amountCents = positiveInt(body.amountCents);
   if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !['Flávio', 'Fernando'].includes(professional) || !service || amountCents < 1) return json({ error: 'Preencha profissional, serviço, data e valor.' }, 400);
@@ -65,6 +69,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  if (!(await isAuthenticated(request))) return json({ error: 'Não autorizado.' }, 401);
   const url = new URL(request.url), id = positiveInt(url.searchParams.get('id')), entity = url.searchParams.get('entity');
   if (!id) return json({ error: 'Registro inválido.' }, 400);
   if (entity === 'appointment') await env.DB.prepare('DELETE FROM appointments WHERE id = ?').bind(id).run();
