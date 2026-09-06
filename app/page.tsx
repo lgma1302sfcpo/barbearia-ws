@@ -97,12 +97,15 @@ export default function Home() {
     setError('');
     try {
       const scrollY = window.scrollY;
+      const shouldRevealAppointment = method === 'POST' && payload.entity === 'appointment';
       const response = await fetch('/api/data', { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
       const result = await response.json() as { id?: number; error?: string };
       if (response.status === 401) { setAuthenticated(false); return false; }
       if (!response.ok) { setError(result.error || 'Não foi possível salvar.'); return false; }
       if (method === 'POST' && payload.entity === 'appointment' && result.id) { setRecentlyAddedId(Number(result.id)); window.setTimeout(() => setRecentlyAddedId(null), 3200); }
-      setNotice(success); window.setTimeout(() => setNotice(''), 2600); await refresh(true); window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'auto' }))); return true;
+      setNotice(success); window.setTimeout(() => setNotice(''), 2600); await refresh(true);
+      if (!shouldRevealAppointment) window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'auto' })));
+      return true;
     } catch { setError('Não foi possível salvar. Verifique a conexão e tente novamente.'); return false; }
   }
 
@@ -184,6 +187,23 @@ function PinGate({ checking, onUnlock }: { checking: boolean; onUnlock: () => vo
 
 function Appointments({ items, totals, selectedDate, save, remove, monthly, recentlyAddedId }: { items: Appointment[]; totals: ReturnType<typeof dayTotals>; selectedDate: string; save: (payload: Record<string, unknown>, success: string, method?: 'POST' | 'PATCH') => Promise<boolean>; remove: (entity: string, id: number) => Promise<void>; monthly: ReturnType<typeof monthTotals>; recentlyAddedId: number | null }) {
   const [professional, setProfessional] = useState<'' | 'Flávio' | 'Fernando'>(''), [payment, setPayment] = useState(''), [service, setService] = useState(''), [client, setClient] = useState('Cliente'), [amount, setAmount] = useState(''), [time, setTime] = useState(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })), [editingId, setEditingId] = useState<number | null>(null);
+  useEffect(() => {
+    if (!recentlyAddedId) return;
+    let innerFrame = 0;
+    const outerFrame = window.requestAnimationFrame(() => {
+      innerFrame = window.requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('.recently-added')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'center',
+        });
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(outerFrame);
+      window.cancelAnimationFrame(innerFrame);
+    };
+  }, [items, recentlyAddedId]);
   function resetForm() { setEditingId(null); setProfessional(''); setPayment(''); setService(''); setClient('Cliente'); setAmount(''); }
   function edit(item: Appointment) { setEditingId(item.id); setProfessional(item.professional); setPayment(item.payment); setService(item.service); setClient(item.client); setAmount(String(item.amount_cents / 100).replace('.', ',')); setTime(item.time); }
   function selectService(value: string) { setService(value); const selected = SERVICE_OPTIONS.find((item) => item.name === value); setAmount(selected ? String(selected.cents / 100).replace('.', ',') : ''); }

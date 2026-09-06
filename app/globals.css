@@ -304,8 +304,9 @@ body {
 }
 
 @keyframes recently-added {
-  0%, 35% { background-color: #fff0c9; box-shadow: inset 4px 0 0 #f2a24a; }
-  100% { background-color: transparent; box-shadow: inset 4px 0 0 transparent; }
+  0%, 40%, 80% { background-color: #ffe3a3; box-shadow: inset 5px 0 0 #e98528, inset -5px 0 0 #e98528; }
+  20%, 60% { background-color: #fffaf0; box-shadow: inset 5px 0 0 transparent, inset -5px 0 0 transparent; }
+  100% { background-color: transparent; box-shadow: inset 5px 0 0 transparent, inset -5px 0 0 transparent; }
 }
 
 @media (prefers-reduced-motion: reduce) {
