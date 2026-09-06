@@ -141,6 +141,28 @@ body {
   .entry-form {
     border-color: #b9ad9d;
     background: #fffaf1;
+    scroll-margin-top: 1rem;
+  }
+
+  .professional-carousel {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-behavior: smooth;
+    scroll-snap-type: inline mandatory;
+    scrollbar-width: none;
+  }
+
+  .professional-carousel::-webkit-scrollbar {
+    display: none;
+  }
+
+  .professional-carousel > section {
+    flex: 0 0 calc(100% - 1.25rem);
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
   }
 
   .entry-form h3 {
@@ -258,6 +280,26 @@ body {
 
   .recently-added {
     animation: recently-added 3s ease-out;
+  }
+}
+
+@media (min-width: 1024px) {
+  .professional-carousel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  .professional-carousel > section {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 639px) {
+  .mobile-date-input {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 }
 
