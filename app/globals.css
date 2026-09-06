@@ -222,6 +222,20 @@ body {
     @apply mt-0.5 text-xs text-muted-foreground;
   }
 
+  .monthly-cuts-table {
+    min-width: 880px;
+  }
+
+  .monthly-cuts-table tbody tr.monthly-payment-pending {
+    background: #fff0f0;
+    box-shadow: inset 4px 0 0 #dc2626;
+  }
+
+  .monthly-cuts-table .issue-note {
+    color: #b91c1c;
+    font-weight: 800;
+  }
+
   .professional-table {
     @apply w-full table-fixed text-sm;
   }
@@ -304,11 +318,32 @@ body {
 }
 
 @keyframes recently-added {
-  0%, 40%, 80% { background-color: #ffe3a3; box-shadow: inset 5px 0 0 #e98528, inset -5px 0 0 #e98528; }
-  20%, 60% { background-color: #fffaf0; box-shadow: inset 5px 0 0 transparent, inset -5px 0 0 transparent; }
-  100% { background-color: transparent; box-shadow: inset 5px 0 0 transparent, inset -5px 0 0 transparent; }
+  0%,
+  40%,
+  80% {
+    background-color: #ffe3a3;
+    box-shadow:
+      inset 5px 0 0 #e98528,
+      inset -5px 0 0 #e98528;
+  }
+  20%,
+  60% {
+    background-color: #fffaf0;
+    box-shadow:
+      inset 5px 0 0 transparent,
+      inset -5px 0 0 transparent;
+  }
+  100% {
+    background-color: transparent;
+    box-shadow:
+      inset 5px 0 0 transparent,
+      inset -5px 0 0 transparent;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .recently-added { animation: none; background-color: #fff0c9; }
+  .recently-added {
+    animation: none;
+    background-color: #fff0c9;
+  }
 }

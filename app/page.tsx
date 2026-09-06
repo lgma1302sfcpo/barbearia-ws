@@ -12,6 +12,7 @@ import {
   Banknote,
   Beer,
   CalendarDays,
+  CalendarRange,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
@@ -64,13 +65,27 @@ type Expense = {
   payment: string;
   amount_cents: number;
 };
+type MonthlyCut = {
+  id: number;
+  month: string;
+  professional: 'Flávio' | 'Fernando';
+  payment: string;
+  client: string;
+  amount_cents: number;
+  cuts_total: number;
+  cuts_used: number;
+  start_date: string;
+  last_cut_date: string;
+  time: string;
+};
 type DataSet = {
   appointments: Appointment[];
   products: Product[];
   beverageSales: BeverageSale[];
   expenses: Expense[];
+  monthlyCuts: MonthlyCut[];
 };
-type Section = 'atendimentos' | 'bebidas' | 'gastos' | 'resumo';
+type Section = 'atendimentos' | 'mensais' | 'bebidas' | 'gastos' | 'resumo';
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -86,6 +101,7 @@ const emptyData: DataSet = {
   products: [],
   beverageSales: [],
   expenses: [],
+  monthlyCuts: [],
 };
 const today = new Date().toLocaleDateString('en-CA');
 const SERVICE_OPTIONS = [
@@ -462,6 +478,13 @@ export default function Home() {
               Atendimentos
             </Nav>
             <Nav
+              active={section === 'mensais'}
+              onClick={() => setSection('mensais')}
+              icon={<CalendarRange />}
+            >
+              Cortes mensais
+            </Nav>
+            <Nav
               active={section === 'bebidas'}
               onClick={() => setSection('bebidas')}
               icon={<Beer />}
@@ -626,6 +649,14 @@ export default function Home() {
             remove={remove}
             monthly={monthly}
             recentlyAddedId={recentlyAddedId}
+          />
+        ) : section === 'mensais' ? (
+          <MonthlyCuts
+            items={data.monthlyCuts}
+            month={month}
+            selectedDate={selectedDate}
+            save={save}
+            remove={remove}
           />
         ) : section === 'bebidas' ? (
           <Beverages
@@ -1087,6 +1118,411 @@ function ProfessionalPanel({
         <Empty text={`Nenhum atendimento de ${name} neste dia.`} />
       )}
     </section>
+  );
+}
+
+function MonthlyCuts({
+  items,
+  month,
+  selectedDate,
+  save,
+  remove,
+}: {
+  items: MonthlyCut[];
+  month: string;
+  selectedDate: string;
+  save: (
+    payload: Record<string, unknown>,
+    success: string,
+    method?: 'POST' | 'PATCH',
+  ) => Promise<boolean>;
+  remove: (entity: string, id: number) => Promise<void>;
+}) {
+  const [professional, setProfessional] = useState<'' | 'Flávio' | 'Fernando'>(
+      '',
+    ),
+    [client, setClient] = useState(''),
+    [payment, setPayment] = useState(''),
+    [amount, setAmount] = useState(''),
+    [cutsTotal, setCutsTotal] = useState('4'),
+    [cutsUsed, setCutsUsed] = useState('1'),
+    [startDate, setStartDate] = useState(selectedDate),
+    [lastCutDate, setLastCutDate] = useState(selectedDate),
+    [time, setTime] = useState(
+      new Date().toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    ),
+    [editingId, setEditingId] = useState<number | null>(null),
+    [submitting, setSubmitting] = useState(false);
+
+  const totalCuts = items.reduce((sum, item) => sum + item.cuts_total, 0);
+  const usedCuts = items.reduce((sum, item) => sum + item.cuts_used, 0);
+  const received = items
+    .filter((item) => item.payment !== 'Não pagou')
+    .reduce((sum, item) => sum + item.amount_cents, 0);
+  const flavioReceived = items
+    .filter(
+      (item) => item.professional === 'Flávio' && item.payment !== 'Não pagou',
+    )
+    .reduce((sum, item) => sum + item.amount_cents, 0);
+  const fernandoReceived = items
+    .filter(
+      (item) =>
+        item.professional === 'Fernando' && item.payment !== 'Não pagou',
+    )
+    .reduce((sum, item) => sum + item.amount_cents, 0);
+
+  function resetForm() {
+    setEditingId(null);
+    setProfessional('');
+    setClient('');
+    setPayment('');
+    setAmount('');
+    setCutsTotal('4');
+    setCutsUsed('1');
+    setStartDate(selectedDate);
+    setLastCutDate(selectedDate);
+  }
+
+  function edit(item: MonthlyCut) {
+    setEditingId(item.id);
+    setProfessional(item.professional);
+    setClient(item.client);
+    setPayment(item.payment);
+    setAmount(String(item.amount_cents / 100).replace('.', ','));
+    setCutsTotal(String(item.cuts_total));
+    setCutsUsed(String(item.cuts_used));
+    setStartDate(item.start_date);
+    setLastCutDate(item.last_cut_date);
+    setTime(item.time);
+    document.getElementById('monthly-cut-form')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      const saved = await save(
+        {
+          entity: 'monthlyCut',
+          id: editingId ?? undefined,
+          month,
+          professional,
+          client,
+          payment,
+          amountCents: toCents(amount),
+          cutsTotal: Number(cutsTotal),
+          cutsUsed: Number(cutsUsed),
+          startDate,
+          lastCutDate,
+          time,
+        },
+        editingId ? 'Plano mensal atualizado.' : 'Plano mensal adicionado.',
+        editingId ? 'PATCH' : 'POST',
+      );
+      if (saved) resetForm();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MonthlyMetric label="Clientes mensais" value={String(items.length)} />
+        <MonthlyMetric
+          label="Cortes realizados"
+          value={`${usedCuts} de ${totalCuts}`}
+        />
+        <MonthlyMetric
+          label="Cortes restantes"
+          value={String(Math.max(0, totalCuts - usedCuts))}
+        />
+        <MonthlyMetric
+          label="Valor recebido"
+          value={money.format(received / 100)}
+        />
+        <MonthlyMetric
+          label="Flávio · 60%"
+          value={money.format((flavioReceived * 0.6) / 100)}
+        />
+        <MonthlyMetric
+          label="Fernando · 60%"
+          value={money.format((fernandoReceived * 0.6) / 100)}
+        />
+        <MonthlyMetric
+          label="Barbearia · 40%"
+          value={money.format((received * 0.4) / 100)}
+        />
+      </section>
+
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <DataCard
+          title="Cortes mensais"
+          subtitle="Acompanhamento dos planos e do uso de cada corte"
+          count={items.length}
+        >
+          {items.length ? (
+            <table className="data-table monthly-cuts-table">
+              <thead>
+                <tr>
+                  <th>Profissional / cliente</th>
+                  <th>Plano / progresso</th>
+                  <th>Pagamento</th>
+                  <th>Valor</th>
+                  <th>Último corte</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => {
+                  const complete = item.cuts_used >= item.cuts_total;
+                  const pending =
+                    item.payment === 'Não pagou' || item.amount_cents === 0;
+                  return (
+                    <tr
+                      key={item.id}
+                      className={pending ? 'monthly-payment-pending' : ''}
+                    >
+                      <td>
+                        <strong>{item.professional}</strong>
+                        <small>{item.client}</small>
+                      </td>
+                      <td>
+                        <strong>
+                          Corte mensal {item.cuts_used}/{item.cuts_total}
+                        </strong>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className={`h-full rounded-full ${complete ? 'bg-emerald-600' : 'bg-[#f2a24a]'}`}
+                            style={{
+                              width: `${Math.min(100, (item.cuts_used / item.cuts_total) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                        <small>
+                          {complete
+                            ? 'Plano concluído'
+                            : `${item.cuts_total - item.cuts_used} restantes`}
+                        </small>
+                      </td>
+                      <td className={pending ? 'issue-note' : ''}>
+                        {item.payment}
+                      </td>
+                      <td
+                        className={`font-bold ${pending ? 'issue-note' : ''}`}
+                      >
+                        {money.format(item.amount_cents / 100)}
+                      </td>
+                      <td>
+                        <strong>{displayDate(item.last_cut_date)}</strong>
+                        <small>{item.time}</small>
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-1">
+                          <MonthlyCutUseButton
+                            item={item}
+                            disabled={complete}
+                            onUse={() =>
+                              save(
+                                {
+                                  entity: 'monthlyCutUse',
+                                  id: item.id,
+                                  date: selectedDate,
+                                  time: new Date().toLocaleTimeString('pt-BR', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  }),
+                                },
+                                `Corte ${item.cuts_used + 1}/${item.cuts_total} registrado para ${item.client}.`,
+                                'PATCH',
+                              )
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => edit(item)}
+                            aria-label={`Editar plano de ${item.client}`}
+                          >
+                            <Pencil />
+                          </Button>
+                          <Delete
+                            onClick={() => remove('monthlyCut', item.id)}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <Empty text="Nenhum corte mensal cadastrado neste mês." />
+          )}
+        </DataCard>
+
+        <form
+          id="monthly-cut-form"
+          className="form-card entry-form"
+          onSubmit={submit}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <FormTitle
+              title={editingId ? 'Editar plano mensal' : 'Novo plano mensal'}
+              text="Cadastre o pagamento e acompanhe os cortes usados."
+            />
+            {editingId && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={resetForm}
+                aria-label="Cancelar edição"
+              >
+                <X />
+              </Button>
+            )}
+          </div>
+          <Field label="Profissional">
+            <NativeSelect
+              className="w-full"
+              value={professional}
+              onChange={(event) =>
+                setProfessional(
+                  event.target.value as '' | 'Flávio' | 'Fernando',
+                )
+              }
+              required
+            >
+              <NativeSelectOption value="" disabled>
+                Selecione uma opção
+              </NativeSelectOption>
+              <NativeSelectOption>Flávio</NativeSelectOption>
+              <NativeSelectOption>Fernando</NativeSelectOption>
+            </NativeSelect>
+          </Field>
+          <Field label="Cliente">
+            <Input
+              value={client}
+              onChange={(event) => setClient(event.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Pagamento">
+            <Payment value={payment} onChange={setPayment} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Valor do plano">
+              <Input
+                inputMode="decimal"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                placeholder="0,00"
+              />
+            </Field>
+            <Field label="Total de cortes">
+              <Input
+                type="number"
+                min="1"
+                max="31"
+                value={cutsTotal}
+                onChange={(event) => setCutsTotal(event.target.value)}
+                required
+              />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Cortes usados">
+              <Input
+                type="number"
+                min="0"
+                max={Math.max(1, Number(cutsTotal) || 1)}
+                value={cutsUsed}
+                onChange={(event) => setCutsUsed(event.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Horário">
+              <Input
+                type="time"
+                value={time}
+                onChange={(event) => setTime(event.target.value)}
+                required
+              />
+            </Field>
+          </div>
+          <Field label="Data de início">
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(event) => {
+                setStartDate(event.target.value);
+                if (!editingId) setLastCutDate(event.target.value);
+              }}
+              required
+            />
+          </Field>
+          <Submit loading={submitting}>
+            {editingId ? 'Salvar alterações' : 'Adicionar plano mensal'}
+          </Submit>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function MonthlyMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <article className="rounded-2xl border bg-card p-4 shadow-sm">
+      <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-2 text-2xl font-black tabular-nums">{value}</p>
+    </article>
+  );
+}
+
+function MonthlyCutUseButton({
+  item,
+  disabled,
+  onUse,
+}: {
+  item: MonthlyCut;
+  disabled: boolean;
+  onUse: () => Promise<boolean>;
+}) {
+  const [loading, setLoading] = useState(false);
+  async function handleUseCut() {
+    setLoading(true);
+    try {
+      await onUse();
+    } finally {
+      setLoading(false);
+    }
+  }
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      disabled={disabled || loading}
+      onClick={() => void handleUseCut()}
+      aria-label={
+        disabled
+          ? `Plano de ${item.client} concluído`
+          : `Registrar próximo corte de ${item.client}`
+      }
+    >
+      {loading ? <LoaderCircle className="animate-spin" /> : <Plus />}
+      {disabled ? 'Concluído' : 'Corte'}
+    </Button>
   );
 }
 
