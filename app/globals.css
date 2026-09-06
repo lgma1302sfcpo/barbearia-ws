@@ -138,6 +138,35 @@ body {
     @apply grid gap-3 rounded-2xl border bg-card p-5 shadow-sm;
   }
 
+  .entry-form {
+    border-color: #b9ad9d;
+    background: #fffaf1;
+  }
+
+  .entry-form h3 {
+    color: #172b36;
+    font-weight: 900;
+  }
+
+  .entry-form label,
+  .entry-form label > span,
+  .entry-form p {
+    color: #354a54;
+  }
+
+  .entry-form [data-slot='input'],
+  .entry-form [data-slot='native-select'] {
+    border-color: #aaa095;
+    background: #ffffff;
+    color: #172b36;
+    font-weight: 700;
+  }
+
+  .entry-form [data-slot='input']:focus-visible,
+  .entry-form [data-slot='native-select']:focus-visible {
+    border-color: #b85f18;
+  }
+
   .data-table {
     @apply w-full min-w-[650px] text-sm;
   }

@@ -38,14 +38,15 @@ export async function POST(request: Request) {
   if (entity === 'appointment') {
     const date = clean(body.date, 10);
     const professional = clean(body.professional, 30);
+    const payment = clean(body.payment, 40);
     const service = clean(body.service);
     const amountCents = positiveInt(body.amountCents);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !['Flávio', 'Fernando'].includes(professional) || !service || amountCents < 1) {
-      return json({ error: 'Preencha profissional, serviço, data e valor.' }, 400);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !['Flávio', 'Fernando'].includes(professional) || !payment || !service || amountCents < 1) {
+      return json({ error: 'Selecione profissional e pagamento e preencha serviço, data e valor.' }, 400);
     }
     const rows = await sql`INSERT INTO appointments
       (date, professional, payment, service, client, amount_cents, time, created_at)
-      VALUES (${date}, ${professional}, ${clean(body.payment, 40) || 'Não informado'}, ${service},
+      VALUES (${date}, ${professional}, ${payment}, ${service},
         ${clean(body.client) || 'Cliente'}, ${amountCents}, ${clean(body.time, 5) || '00:00'}, ${now})
       RETURNING id`;
     return json({ id: rows[0].id }, 201);
@@ -85,11 +86,12 @@ export async function POST(request: Request) {
 
   if (entity === 'expense') {
     const description = clean(body.description);
+    const category = clean(body.category, 60);
+    const payment = clean(body.payment, 40);
     const amountCents = positiveInt(body.amountCents);
-    if (!description || amountCents < 1) return json({ error: 'Informe a descrição e o valor do gasto.' }, 400);
+    if (!description || !category || !payment || amountCents < 1) return json({ error: 'Preencha a descrição e o valor e selecione categoria e pagamento.' }, 400);
     const rows = await sql`INSERT INTO expenses (date, description, category, payment, amount_cents, created_at)
-      VALUES (${clean(body.date, 10)}, ${description}, ${clean(body.category, 60) || 'Outros'},
-        ${clean(body.payment, 40) || 'Não informado'}, ${amountCents}, ${now}) RETURNING id`;
+      VALUES (${clean(body.date, 10)}, ${description}, ${category}, ${payment}, ${amountCents}, ${now}) RETURNING id`;
     return json({ id: rows[0].id }, 201);
   }
 
@@ -102,14 +104,15 @@ export async function PATCH(request: Request) {
   const id = positiveInt(body.id);
   const date = clean(body.date, 10);
   const professional = clean(body.professional, 30);
+  const payment = clean(body.payment, 40);
   const service = clean(body.service);
   const amountCents = positiveInt(body.amountCents);
-  if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !['Flávio', 'Fernando'].includes(professional) || !service || amountCents < 1) {
-    return json({ error: 'Preencha profissional, serviço, data e valor.' }, 400);
+  if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !['Flávio', 'Fernando'].includes(professional) || !payment || !service || amountCents < 1) {
+    return json({ error: 'Selecione profissional e pagamento e preencha serviço, data e valor.' }, 400);
   }
   const sql = await database();
   const rows = await sql`UPDATE appointments SET
-      date = ${date}, professional = ${professional}, payment = ${clean(body.payment, 40) || 'Não informado'},
+      date = ${date}, professional = ${professional}, payment = ${payment},
       service = ${service}, client = ${clean(body.client) || 'Cliente'}, amount_cents = ${amountCents},
       time = ${clean(body.time, 5) || '00:00'}
     WHERE id = ${id} RETURNING id`;
