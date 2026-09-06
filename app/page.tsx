@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { Banknote, Beer, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Download, LoaderCircle, Plus, ReceiptText, Scissors, Trash2, Users, WalletCards } from 'lucide-react';
+import { Banknote, Beer, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Download, LoaderCircle, Pencil, Plus, ReceiptText, Scissors, Trash2, Users, WalletCards, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
@@ -28,9 +28,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [recentlyAddedId, setRecentlyAddedId] = useState<number | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true); setError('');
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true); setError('');
     try {
       const response = await fetch(`/api/data?month=${month}`);
       if (!response.ok) throw new Error('Não foi possível carregar os lançamentos.');
@@ -40,7 +41,7 @@ export default function Home() {
     finally { setLoading(false); }
   }, [month]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(false); }, [refresh]);
 
   const dayAppointments = data.appointments.filter((item) => item.date === selectedDate);
   const daySales = data.beverageSales.filter((item) => item.date === selectedDate);
@@ -66,19 +67,23 @@ export default function Home() {
     const next = value.toISOString().slice(0, 7); setMonth(next); setSelectedDate(`${next}-01`);
   }
 
-  async function post(payload: Record<string, unknown>, success: string) {
+  async function save(payload: Record<string, unknown>, success: string, method: 'POST' | 'PATCH' = 'POST') {
     setError('');
-    const response = await fetch('/api/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
-    const result = await response.json() as { error?: string };
-    if (!response.ok) { setError(result.error || 'Não foi possível salvar.'); return false; }
-    setNotice(success); window.setTimeout(() => setNotice(''), 2600); await refresh(); return true;
+    try {
+      const scrollY = window.scrollY;
+      const response = await fetch('/api/data', { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+      const result = await response.json() as { id?: number; error?: string };
+      if (!response.ok) { setError(result.error || 'Não foi possível salvar.'); return false; }
+      if (method === 'POST' && payload.entity === 'appointment' && result.id) { setRecentlyAddedId(Number(result.id)); window.setTimeout(() => setRecentlyAddedId(null), 3200); }
+      setNotice(success); window.setTimeout(() => setNotice(''), 2600); await refresh(true); window.requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'auto' })); return true;
+    } catch { setError('Não foi possível salvar. Verifique se o sistema local está ligado.'); return false; }
   }
 
   async function remove(entity: string, id: number) {
     if (!window.confirm('Excluir este lançamento? Esta ação não pode ser desfeita.')) return;
     const response = await fetch(`/api/data?entity=${entity}&id=${id}`, { method: 'DELETE' });
     if (!response.ok) { setError('Não foi possível excluir o lançamento.'); return; }
-    await refresh();
+    await refresh(true);
   }
 
   function exportCsv() {
@@ -124,33 +129,40 @@ export default function Home() {
         <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Summary icon={<CircleDollarSign />} label="Faturamento bruto do dia" value={money.format(totals.services / 100)} highlight />
           <Summary icon={<Users />} label="Clientes atendidos" value={String(dayAppointments.length)} />
-          <Summary icon={<WalletCards />} label="Profissionais · 60%" value={money.format(totals.services * 0.6 / 100)} />
-          <Summary icon={<Banknote />} label="Barbearia · 40%" value={money.format(totals.services * 0.4 / 100)} />
+          <ProfessionalSplitSummary flavio={totals.flavio} fernando={totals.fernando} />
+          <Summary icon={<Banknote />} label="Barbearia · 40% dos dois" value={money.format(totals.services * 0.4 / 100)} />
         </section>
 
         {loading ? <div className="grid min-h-64 place-items-center rounded-2xl border bg-card"><LoaderCircle className="size-7 animate-spin text-[#d47724]" /></div> : section === 'atendimentos' ? (
-          <Appointments items={dayAppointments} totals={totals} selectedDate={selectedDate} post={post} remove={remove} monthly={monthly} />
+          <Appointments items={dayAppointments} totals={totals} selectedDate={selectedDate} save={save} remove={remove} monthly={monthly} recentlyAddedId={recentlyAddedId} />
         ) : section === 'bebidas' ? (
-          <Beverages products={data.products} sales={daySales} selectedDate={selectedDate} post={post} remove={remove} />
+          <Beverages products={data.products} sales={daySales} selectedDate={selectedDate} post={(payload, success) => save(payload, success)} remove={remove} />
         ) : section === 'gastos' ? (
-          <Expenses items={dayExpenses} selectedDate={selectedDate} post={post} remove={remove} />
+          <Expenses items={dayExpenses} selectedDate={selectedDate} post={(payload, success) => save(payload, success)} remove={remove} />
         ) : <Monthly data={data} totals={monthly} />}
       </div>
     </main>
   );
 }
 
-function Appointments({ items, totals, selectedDate, post, remove, monthly }: { items: Appointment[]; totals: ReturnType<typeof dayTotals>; selectedDate: string; post: (payload: Record<string, unknown>, success: string) => Promise<boolean>; remove: (entity: string, id: number) => Promise<void>; monthly: ReturnType<typeof monthTotals> }) {
-  const [professional, setProfessional] = useState<'Flávio' | 'Fernando'>('Flávio'), [payment, setPayment] = useState('QR/CODE'), [service, setService] = useState('Corte'), [client, setClient] = useState('Cliente'), [amount, setAmount] = useState('40'), [time, setTime] = useState(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
-  async function submit(event: FormEvent) { event.preventDefault(); if (await post({ entity: 'appointment', date: selectedDate, professional, payment, service, client, amountCents: toCents(amount), time }, 'Atendimento adicionado.')) { setClient('Cliente'); setAmount('40'); } }
+function Appointments({ items, totals, selectedDate, save, remove, monthly, recentlyAddedId }: { items: Appointment[]; totals: ReturnType<typeof dayTotals>; selectedDate: string; save: (payload: Record<string, unknown>, success: string, method?: 'POST' | 'PATCH') => Promise<boolean>; remove: (entity: string, id: number) => Promise<void>; monthly: ReturnType<typeof monthTotals>; recentlyAddedId: number | null }) {
+  const [professional, setProfessional] = useState<'Flávio' | 'Fernando'>('Flávio'), [payment, setPayment] = useState('QR/CODE'), [service, setService] = useState('Corte'), [client, setClient] = useState('Cliente'), [amount, setAmount] = useState('40'), [time, setTime] = useState(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })), [editingId, setEditingId] = useState<number | null>(null);
+  function resetForm() { setEditingId(null); setProfessional('Flávio'); setPayment('QR/CODE'); setService('Corte'); setClient('Cliente'); setAmount('40'); }
+  function edit(item: Appointment) { setEditingId(item.id); setProfessional(item.professional); setPayment(item.payment); setService(item.service); setClient(item.client); setAmount(String(item.amount_cents / 100).replace('.', ',')); setTime(item.time); }
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const payload = { entity: 'appointment', id: editingId ?? undefined, date: selectedDate, professional, payment, service, client, amountCents: toCents(amount), time };
+    const saved = await save(payload, editingId ? 'Atendimento atualizado.' : 'Atendimento adicionado.', editingId ? 'PATCH' : 'POST');
+    if (saved) resetForm();
+  }
   const flavioItems = items.filter((item) => item.professional === 'Flávio');
   const fernandoItems = items.filter((item) => item.professional === 'Fernando');
-  return <div className="space-y-5"><div className="grid items-start gap-5 lg:grid-cols-3"><ProfessionalPanel name="Flávio" date={selectedDate} items={flavioItems} total={totals.flavio} remove={remove} /><ProfessionalPanel name="Fernando" date={selectedDate} items={fernandoItems} total={totals.fernando} remove={remove} /><form id="entry-form" onSubmit={submit} className="form-card"><FormTitle title="Novo atendimento" text="Escolha o profissional. O lançamento aparece no lado correto." /><Field label="Profissional"><NativeSelect className="w-full" value={professional} onChange={(e) => setProfessional(e.target.value as 'Flávio' | 'Fernando')}><NativeSelectOption>Flávio</NativeSelectOption><NativeSelectOption>Fernando</NativeSelectOption></NativeSelect></Field><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2"><Field label="Serviço"><Input value={service} onChange={(e) => setService(e.target.value)} required /></Field><Field label="Cliente"><Input value={client} onChange={(e) => setClient(e.target.value)} /></Field></div><div className="grid grid-cols-2 gap-3"><Field label="Pagamento"><Payment value={payment} onChange={setPayment} /></Field><Field label="Horário"><Input type="time" value={time} onChange={(e) => setTime(e.target.value)} required /></Field></div><Field label="Valor"><Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} required /></Field><Split cents={toCents(amount)} /><Submit>Adicionar atendimento</Submit></form></div><ProfessionalCard daily={totals} monthly={monthly} /></div>;
+  return <div className="space-y-4"><div className="grid items-start gap-4 lg:grid-cols-3"><ProfessionalPanel name="Flávio" date={selectedDate} items={flavioItems} total={totals.flavio} remove={remove} edit={edit} recentlyAddedId={recentlyAddedId} /><ProfessionalPanel name="Fernando" date={selectedDate} items={fernandoItems} total={totals.fernando} remove={remove} edit={edit} recentlyAddedId={recentlyAddedId} /><form id="entry-form" onSubmit={submit} className="form-card !gap-2.5 !p-4"><div className="flex items-start justify-between gap-3"><FormTitle title={editingId ? 'Editar atendimento' : 'Novo atendimento'} text={editingId ? 'Altere os dados e salve.' : 'O lançamento aparece no lado correto.'} />{editingId && <Button type="button" variant="ghost" size="icon-sm" onClick={resetForm} aria-label="Cancelar edição"><X /></Button>}</div><Field label="Profissional"><NativeSelect className="w-full" value={professional} onChange={(e) => setProfessional(e.target.value as 'Flávio' | 'Fernando')}><NativeSelectOption>Flávio</NativeSelectOption><NativeSelectOption>Fernando</NativeSelectOption></NativeSelect></Field><div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2"><Field label="Serviço"><Input value={service} onChange={(e) => setService(e.target.value)} required /></Field><Field label="Cliente"><Input value={client} onChange={(e) => setClient(e.target.value)} /></Field></div><div className="grid grid-cols-2 gap-2.5"><Field label="Pagamento"><Payment value={payment} onChange={setPayment} /></Field><Field label="Horário"><Input type="time" value={time} onChange={(e) => setTime(e.target.value)} required /></Field></div><Field label="Valor"><Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} required /></Field><Split cents={toCents(amount)} /><Submit>{editingId ? 'Salvar alterações' : 'Adicionar atendimento'}</Submit></form></div><ProfessionalCard daily={totals} monthly={monthly} /></div>;
 }
 
-function ProfessionalPanel({ name, date, items, total, remove }: { name: 'Flávio' | 'Fernando'; date: string; items: Appointment[]; total: number; remove: (entity: string, id: number) => Promise<void> }) {
+function ProfessionalPanel({ name, date, items, total, remove, edit, recentlyAddedId }: { name: 'Flávio' | 'Fernando'; date: string; items: Appointment[]; total: number; remove: (entity: string, id: number) => Promise<void>; edit: (item: Appointment) => void; recentlyAddedId: number | null }) {
   const flavio = name === 'Flávio';
-  return <section className={`overflow-hidden rounded-2xl border bg-card shadow-sm ${flavio ? 'border-[#8fc8b9]' : 'border-[#b6b9dd]'}`}><div className={`flex items-center justify-between gap-4 border-b px-5 py-4 ${flavio ? 'bg-[#e7f3ef]' : 'bg-[#eeeefa]'}`}><div><p className={`text-xs font-bold uppercase tracking-[.14em] ${flavio ? 'text-[#397567]' : 'text-[#565b91]'}`}>Lado {name}</p><h3 className="mt-0.5 text-xl font-black">{name}</h3><p className="text-xs text-muted-foreground">{displayDate(date)} · {items.length} atendimentos</p></div><div className="text-right"><p className="text-xs font-semibold text-muted-foreground">Total do dia</p><p className="text-xl font-black tabular-nums">{money.format(total / 100)}</p></div></div>{items.length ? <div className="overflow-x-auto"><table className="data-table !min-w-[480px]"><thead><tr><th>Serviço / cliente</th><th>Pagamento / hora</th><th className="text-right">Valor</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.service}</strong><small>{item.client}</small></td><td><strong className="!font-medium">{item.payment}</strong><small>{item.time}</small></td><td className="text-right font-bold text-foreground">{money.format(item.amount_cents / 100)}</td><td className="w-10"><Delete onClick={() => void remove('appointment', item.id)} /></td></tr>)}</tbody></table></div> : <Empty text={`Nenhum atendimento de ${name} neste dia.`} />}</section>;
+  return <section className={`overflow-hidden rounded-2xl border bg-card shadow-sm ${flavio ? 'border-[#8fc8b9]' : 'border-[#b6b9dd]'}`}><div className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${flavio ? 'bg-[#e7f3ef]' : 'bg-[#eeeefa]'}`}><div><p className={`text-[11px] font-bold uppercase tracking-[.14em] ${flavio ? 'text-[#397567]' : 'text-[#565b91]'}`}>Lado {name}</p><h3 className="text-lg font-black">{name}</h3><p className="text-xs text-muted-foreground">{displayDate(date)} · {items.length} atendimentos</p></div><div className="text-right"><p className="text-xs font-semibold text-muted-foreground">Total do dia</p><p className="text-lg font-black tabular-nums">{money.format(total / 100)}</p></div></div>{items.length ? <table className="professional-table"><thead><tr><th>Serviço / cliente</th><th>Pgto. / hora</th><th className="text-right">Valor</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.id} className={item.id === recentlyAddedId ? 'recently-added' : ''}><td><strong>{item.service}</strong><small>{item.client}</small></td><td><strong className="!font-medium">{item.payment}</strong><small>{item.time}</small></td><td className="text-right font-bold text-foreground">{money.format(item.amount_cents / 100)}</td><td><div className="flex justify-end"><Button type="button" variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-[#b45f16]" onClick={() => edit(item)} aria-label="Editar atendimento"><Pencil /></Button><Delete onClick={() => void remove('appointment', item.id)} /></div></td></tr>)}</tbody></table> : <Empty text={`Nenhum atendimento de ${name} neste dia.`} />}</section>;
 }
 
 function Beverages({ products, sales, selectedDate, post, remove }: { products: Product[]; sales: BeverageSale[]; selectedDate: string; post: (payload: Record<string, unknown>, success: string) => Promise<boolean>; remove: (entity: string, id: number) => Promise<void> }) {
@@ -177,6 +189,7 @@ const dayTotals = () => ({ flavio: 0, fernando: 0, services: 0, drinks: 0, expen
 const monthTotals = dayTotals;
 function Nav({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: ReactNode; children: ReactNode }) { return <button onClick={onClick} className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${active ? 'bg-white/12 text-white' : 'text-white/55 hover:bg-white/7 hover:text-white'} [&_svg]:size-4`}>{icon}{children}</button>; }
 function Summary({ icon, label, value, highlight = false }: { icon: ReactNode; label: string; value: string; highlight?: boolean }) { return <article className={`rounded-2xl border p-5 shadow-sm ${highlight ? 'border-[#f2a24a]/45 bg-[#fff7ea]' : 'bg-card'}`}><span className={`mb-4 grid size-9 place-items-center rounded-xl [&_svg]:size-4 ${highlight ? 'bg-[#f2a24a] text-[#172b36]' : 'bg-muted text-muted-foreground'}`}>{icon}</span><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-black tracking-tight tabular-nums">{value}</p></article>; }
+function ProfessionalSplitSummary({ flavio, fernando }: { flavio: number; fernando: number }) { return <article className="rounded-2xl border bg-card p-5 shadow-sm"><span className="mb-3 grid size-9 place-items-center rounded-xl bg-muted text-muted-foreground [&_svg]:size-4"><WalletCards /></span><p className="text-sm text-muted-foreground">Profissionais · 60%</p><div className="mt-2 grid grid-cols-2 gap-3"><div><p className="text-xs font-semibold text-[#397567]">Flávio</p><p className="text-lg font-black tabular-nums">{money.format(flavio * .6 / 100)}</p></div><div><p className="text-xs font-semibold text-[#565b91]">Fernando</p><p className="text-lg font-black tabular-nums">{money.format(fernando * .6 / 100)}</p></div></div></article>; }
 function DataCard({ title, subtitle, count, children }: { title: string; subtitle: string; count: number; children: ReactNode }) { return <section className="overflow-hidden rounded-2xl border bg-card shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4"><div><h3 className="font-bold">{title}</h3><p className="text-sm text-muted-foreground">{subtitle}</p></div><span className="rounded-full bg-[#f2a24a]/15 px-3 py-1 text-xs font-bold text-[#a45113]">{count} registros</span></div><div className="overflow-x-auto">{children}</div></section>; }
 function FormTitle({ title, text }: { title: string; text: string }) { return <div className="mb-1"><h3 className="font-bold">{title}</h3><p className="text-sm text-muted-foreground">{text}</p></div>; }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="grid gap-1.5 text-xs font-bold text-muted-foreground"><span>{label}</span>{children}</label>; }

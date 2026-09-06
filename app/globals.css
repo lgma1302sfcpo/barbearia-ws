@@ -170,4 +170,63 @@ body {
   .data-table td small {
     @apply mt-0.5 text-xs text-muted-foreground;
   }
+
+  .professional-table {
+    @apply w-full table-fixed text-sm;
+  }
+
+  .professional-table thead tr {
+    @apply border-b bg-muted/45 text-left text-[11px] uppercase tracking-wide text-muted-foreground;
+  }
+
+  .professional-table th,
+  .professional-table td {
+    @apply px-2.5 py-2.5 align-middle;
+  }
+
+  .professional-table th:first-child,
+  .professional-table td:first-child {
+    @apply w-[34%] pl-4;
+  }
+
+  .professional-table th:nth-child(2),
+  .professional-table td:nth-child(2) {
+    @apply w-[27%];
+  }
+
+  .professional-table th:nth-child(3),
+  .professional-table td:nth-child(3) {
+    @apply w-[20%];
+  }
+
+  .professional-table th:last-child,
+  .professional-table td:last-child {
+    @apply w-[19%] pr-2;
+  }
+
+  .professional-table tbody tr {
+    @apply border-b last:border-0 hover:bg-muted/35;
+  }
+
+  .professional-table td strong,
+  .professional-table td small {
+    @apply block truncate;
+  }
+
+  .professional-table td small {
+    @apply mt-0.5 text-xs text-muted-foreground;
+  }
+
+  .recently-added {
+    animation: recently-added 3s ease-out;
+  }
+}
+
+@keyframes recently-added {
+  0%, 35% { background-color: #fff0c9; box-shadow: inset 4px 0 0 #f2a24a; }
+  100% { background-color: transparent; box-shadow: inset 4px 0 0 transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recently-added { animation: none; background-color: #fff0c9; }
 }

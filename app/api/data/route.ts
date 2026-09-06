@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const month = /^\d{4}-\d{2}$/.test(url.searchParams.get('month') ?? '') ? url.searchParams.get('month')! : new Date().toISOString().slice(0, 7);
   const pattern = `${month}-%`;
   const [appointments, beverageSales, products, expenses] = await Promise.all([
-    env.DB.prepare('SELECT * FROM appointments WHERE date LIKE ? ORDER BY date DESC, time DESC, id DESC').bind(pattern).all(),
+    env.DB.prepare('SELECT * FROM appointments WHERE date LIKE ? ORDER BY date DESC, id ASC').bind(pattern).all(),
     env.DB.prepare('SELECT * FROM beverage_sales WHERE date LIKE ? ORDER BY date DESC, id DESC').bind(pattern).all(),
     env.DB.prepare('SELECT * FROM beverage_products ORDER BY name COLLATE NOCASE').all(),
     env.DB.prepare('SELECT * FROM expenses WHERE date LIKE ? ORDER BY date DESC, id DESC').bind(pattern).all(),
@@ -52,6 +52,16 @@ export async function POST(request: Request) {
     return json({ id: result.meta.last_row_id }, 201);
   }
   return json({ error: 'Tipo de lançamento inválido.' }, 400);
+}
+
+export async function PATCH(request: Request) {
+  const body = await request.json() as Record<string, unknown>;
+  const id = positiveInt(body.id), date = clean(body.date, 10), professional = clean(body.professional, 30), service = clean(body.service), amountCents = positiveInt(body.amountCents);
+  if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !['Flávio', 'Fernando'].includes(professional) || !service || amountCents < 1) return json({ error: 'Preencha profissional, serviço, data e valor.' }, 400);
+  const result = await env.DB.prepare('UPDATE appointments SET date = ?, professional = ?, payment = ?, service = ?, client = ?, amount_cents = ?, time = ? WHERE id = ?')
+    .bind(date, professional, clean(body.payment, 40) || 'Não informado', service, clean(body.client) || 'Cliente', amountCents, clean(body.time, 5) || '00:00', id).run();
+  if (!result.meta.changes) return json({ error: 'Atendimento não encontrado.' }, 404);
+  return json({ id, updated: true });
 }
 
 export async function DELETE(request: Request) {
