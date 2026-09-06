@@ -237,6 +237,16 @@ body {
     @apply border-b last:border-0 hover:bg-muted/35;
   }
 
+  .professional-table tbody tr.payment-issue {
+    background: #fff0f0;
+    box-shadow: inset 4px 0 0 #dc2626;
+  }
+
+  .professional-table .issue-note {
+    color: #b91c1c;
+    font-weight: 800;
+  }
+
   .professional-table td strong,
   .professional-table td small {
     @apply block truncate;
