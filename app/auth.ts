@@ -1,5 +1,3 @@
-import { env } from 'cloudflare:workers';
-
 export const SESSION_COOKIE = 'barbearia_session';
 
 function hex(bytes: ArrayBuffer) {
@@ -7,16 +5,16 @@ function hex(bytes: ArrayBuffer) {
 }
 
 async function sessionToken() {
-  const pin = String(env.SITE_PIN ?? '');
-  const secret = String(env.SITE_SESSION_SECRET ?? '');
+  const pin = String(process.env.SITE_PIN ?? '');
+  const secret = String(process.env.SITE_SESSION_SECRET ?? '');
   if (!pin || !secret) return '';
   return hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${pin}:${secret}`)));
 }
 
 export async function validPin(pin: string) {
   const supplied = hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin)));
-  const expected = hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(env.SITE_PIN ?? ''))));
-  return supplied === expected && Boolean(env.SITE_PIN);
+  const expected = hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(process.env.SITE_PIN ?? ''))));
+  return supplied === expected && Boolean(process.env.SITE_PIN);
 }
 
 export async function isAuthenticated(request: Request) {

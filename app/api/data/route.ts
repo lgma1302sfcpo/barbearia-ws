@@ -1,22 +1,31 @@
-import { env } from 'cloudflare:workers';
 import { isAuthenticated } from '@/app/auth';
+import { ensureSchema, getSql } from '@/db/postgres';
+
+export const runtime = 'nodejs';
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 const clean = (value: unknown, max = 120) => String(value ?? '').trim().slice(0, max);
 const positiveInt = (value: unknown) => Math.max(0, Math.round(Number(value) || 0));
 
+async function database() {
+  await ensureSchema();
+  return getSql();
+}
+
 export async function GET(request: Request) {
   if (!(await isAuthenticated(request))) return json({ error: 'Não autorizado.' }, 401);
   const url = new URL(request.url);
-  const month = /^\d{4}-\d{2}$/.test(url.searchParams.get('month') ?? '') ? url.searchParams.get('month')! : new Date().toISOString().slice(0, 7);
+  const requestedMonth = url.searchParams.get('month') ?? '';
+  const month = /^\d{4}-\d{2}$/.test(requestedMonth) ? requestedMonth : new Date().toISOString().slice(0, 7);
   const pattern = `${month}-%`;
+  const sql = await database();
   const [appointments, beverageSales, products, expenses] = await Promise.all([
-    env.DB.prepare('SELECT * FROM appointments WHERE date LIKE ? ORDER BY date DESC, id ASC').bind(pattern).all(),
-    env.DB.prepare('SELECT * FROM beverage_sales WHERE date LIKE ? ORDER BY date DESC, id DESC').bind(pattern).all(),
-    env.DB.prepare('SELECT * FROM beverage_products ORDER BY name COLLATE NOCASE').all(),
-    env.DB.prepare('SELECT * FROM expenses WHERE date LIKE ? ORDER BY date DESC, id DESC').bind(pattern).all(),
+    sql`SELECT * FROM appointments WHERE date LIKE ${pattern} ORDER BY date DESC, id ASC`,
+    sql`SELECT * FROM beverage_sales WHERE date LIKE ${pattern} ORDER BY date DESC, id DESC`,
+    sql`SELECT * FROM beverage_products ORDER BY LOWER(name)`,
+    sql`SELECT * FROM expenses WHERE date LIKE ${pattern} ORDER BY date DESC, id DESC`,
   ]);
-  return json({ month, appointments: appointments.results, beverageSales: beverageSales.results, products: products.results, expenses: expenses.results });
+  return json({ month, appointments, beverageSales, products, expenses });
 }
 
 export async function POST(request: Request) {
@@ -24,59 +33,111 @@ export async function POST(request: Request) {
   const body = await request.json() as Record<string, unknown>;
   const entity = clean(body.entity, 30);
   const now = new Date().toISOString();
+  const sql = await database();
+
   if (entity === 'appointment') {
-    const date = clean(body.date, 10), professional = clean(body.professional, 30), service = clean(body.service), amountCents = positiveInt(body.amountCents);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !['Flávio', 'Fernando'].includes(professional) || !service || amountCents < 1) return json({ error: 'Preencha profissional, serviço, data e valor.' }, 400);
-    const result = await env.DB.prepare('INSERT INTO appointments (date, professional, payment, service, client, amount_cents, time, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(date, professional, clean(body.payment, 40) || 'Não informado', service, clean(body.client) || 'Cliente', amountCents, clean(body.time, 5) || '00:00', now).run();
-    return json({ id: result.meta.last_row_id }, 201);
+    const date = clean(body.date, 10);
+    const professional = clean(body.professional, 30);
+    const service = clean(body.service);
+    const amountCents = positiveInt(body.amountCents);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !['Flávio', 'Fernando'].includes(professional) || !service || amountCents < 1) {
+      return json({ error: 'Preencha profissional, serviço, data e valor.' }, 400);
+    }
+    const rows = await sql`INSERT INTO appointments
+      (date, professional, payment, service, client, amount_cents, time, created_at)
+      VALUES (${date}, ${professional}, ${clean(body.payment, 40) || 'Não informado'}, ${service},
+        ${clean(body.client) || 'Cliente'}, ${amountCents}, ${clean(body.time, 5) || '00:00'}, ${now})
+      RETURNING id`;
+    return json({ id: rows[0].id }, 201);
   }
+
   if (entity === 'product') {
-    const name = clean(body.name, 60), priceCents = positiveInt(body.priceCents);
+    const name = clean(body.name, 60);
+    const priceCents = positiveInt(body.priceCents);
     if (!name || priceCents < 1) return json({ error: 'Informe o nome e o preço da bebida.' }, 400);
-    try { const result = await env.DB.prepare('INSERT INTO beverage_products (name, price_cents, stock) VALUES (?, ?, ?)').bind(name, priceCents, positiveInt(body.stock)).run(); return json({ id: result.meta.last_row_id }, 201); }
-    catch { return json({ error: 'Já existe uma bebida com esse nome.' }, 409); }
+    try {
+      const rows = await sql`INSERT INTO beverage_products (name, price_cents, stock)
+        VALUES (${name}, ${priceCents}, ${positiveInt(body.stock)}) RETURNING id`;
+      return json({ id: rows[0].id }, 201);
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') return json({ error: 'Já existe uma bebida com esse nome.' }, 409);
+      throw error;
+    }
   }
+
   if (entity === 'beverageSale') {
-    const productId = positiveInt(body.productId), quantity = positiveInt(body.quantity);
-    const product = await env.DB.prepare('SELECT * FROM beverage_products WHERE id = ?').bind(productId).first<Record<string, unknown>>();
-    if (!product || quantity < 1 || Number(product.stock) < quantity) return json({ error: 'Bebida inválida ou estoque insuficiente.' }, 400);
-    const result = await env.DB.batch([
-      env.DB.prepare('INSERT INTO beverage_sales (date, product_id, product_name, client, quantity, unit_price_cents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(clean(body.date, 10), productId, product.name, clean(body.client) || 'Cliente', quantity, product.price_cents, now),
-      env.DB.prepare('UPDATE beverage_products SET stock = stock - ? WHERE id = ?').bind(quantity, productId),
-    ]);
-    return json({ id: result[0].meta.last_row_id }, 201);
+    const productId = positiveInt(body.productId);
+    const quantity = positiveInt(body.quantity);
+    if (!productId || quantity < 1) return json({ error: 'Bebida inválida ou estoque insuficiente.' }, 400);
+    const date = clean(body.date, 10);
+    const client = clean(body.client) || 'Cliente';
+    const rows = await sql`WITH updated AS (
+        UPDATE beverage_products SET stock = stock - ${quantity}
+        WHERE id = ${productId} AND stock >= ${quantity}
+        RETURNING id, name, price_cents
+      )
+      INSERT INTO beverage_sales (date, product_id, product_name, client, quantity, unit_price_cents, created_at)
+      SELECT ${date}, id, name, ${client}, ${quantity}, price_cents, ${now} FROM updated
+      RETURNING id`;
+    if (!rows.length) return json({ error: 'Bebida inválida ou estoque insuficiente.' }, 400);
+    return json({ id: rows[0].id }, 201);
   }
+
   if (entity === 'expense') {
-    const description = clean(body.description), amountCents = positiveInt(body.amountCents);
+    const description = clean(body.description);
+    const amountCents = positiveInt(body.amountCents);
     if (!description || amountCents < 1) return json({ error: 'Informe a descrição e o valor do gasto.' }, 400);
-    const result = await env.DB.prepare('INSERT INTO expenses (date, description, category, payment, amount_cents, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(clean(body.date, 10), description, clean(body.category, 60) || 'Outros', clean(body.payment, 40) || 'Não informado', amountCents, now).run();
-    return json({ id: result.meta.last_row_id }, 201);
+    const rows = await sql`INSERT INTO expenses (date, description, category, payment, amount_cents, created_at)
+      VALUES (${clean(body.date, 10)}, ${description}, ${clean(body.category, 60) || 'Outros'},
+        ${clean(body.payment, 40) || 'Não informado'}, ${amountCents}, ${now}) RETURNING id`;
+    return json({ id: rows[0].id }, 201);
   }
+
   return json({ error: 'Tipo de lançamento inválido.' }, 400);
 }
 
 export async function PATCH(request: Request) {
   if (!(await isAuthenticated(request))) return json({ error: 'Não autorizado.' }, 401);
   const body = await request.json() as Record<string, unknown>;
-  const id = positiveInt(body.id), date = clean(body.date, 10), professional = clean(body.professional, 30), service = clean(body.service), amountCents = positiveInt(body.amountCents);
-  if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !['Flávio', 'Fernando'].includes(professional) || !service || amountCents < 1) return json({ error: 'Preencha profissional, serviço, data e valor.' }, 400);
-  const result = await env.DB.prepare('UPDATE appointments SET date = ?, professional = ?, payment = ?, service = ?, client = ?, amount_cents = ?, time = ? WHERE id = ?')
-    .bind(date, professional, clean(body.payment, 40) || 'Não informado', service, clean(body.client) || 'Cliente', amountCents, clean(body.time, 5) || '00:00', id).run();
-  if (!result.meta.changes) return json({ error: 'Atendimento não encontrado.' }, 404);
+  const id = positiveInt(body.id);
+  const date = clean(body.date, 10);
+  const professional = clean(body.professional, 30);
+  const service = clean(body.service);
+  const amountCents = positiveInt(body.amountCents);
+  if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !['Flávio', 'Fernando'].includes(professional) || !service || amountCents < 1) {
+    return json({ error: 'Preencha profissional, serviço, data e valor.' }, 400);
+  }
+  const sql = await database();
+  const rows = await sql`UPDATE appointments SET
+      date = ${date}, professional = ${professional}, payment = ${clean(body.payment, 40) || 'Não informado'},
+      service = ${service}, client = ${clean(body.client) || 'Cliente'}, amount_cents = ${amountCents},
+      time = ${clean(body.time, 5) || '00:00'}
+    WHERE id = ${id} RETURNING id`;
+  if (!rows.length) return json({ error: 'Atendimento não encontrado.' }, 404);
   return json({ id, updated: true });
 }
 
 export async function DELETE(request: Request) {
   if (!(await isAuthenticated(request))) return json({ error: 'Não autorizado.' }, 401);
-  const url = new URL(request.url), id = positiveInt(url.searchParams.get('id')), entity = url.searchParams.get('entity');
+  const url = new URL(request.url);
+  const id = positiveInt(url.searchParams.get('id'));
+  const entity = url.searchParams.get('entity');
   if (!id) return json({ error: 'Registro inválido.' }, 400);
-  if (entity === 'appointment') await env.DB.prepare('DELETE FROM appointments WHERE id = ?').bind(id).run();
-  else if (entity === 'expense') await env.DB.prepare('DELETE FROM expenses WHERE id = ?').bind(id).run();
-  else if (entity === 'beverageSale') {
-    const sale = await env.DB.prepare('SELECT product_id, quantity FROM beverage_sales WHERE id = ?').bind(id).first<Record<string, number>>();
-    if (sale) await env.DB.batch([env.DB.prepare('DELETE FROM beverage_sales WHERE id = ?').bind(id), env.DB.prepare('UPDATE beverage_products SET stock = stock + ? WHERE id = ?').bind(sale.quantity, sale.product_id)]);
-  } else return json({ error: 'Tipo de registro inválido.' }, 400);
+  const sql = await database();
+
+  if (entity === 'appointment') {
+    await sql`DELETE FROM appointments WHERE id = ${id}`;
+  } else if (entity === 'expense') {
+    await sql`DELETE FROM expenses WHERE id = ${id}`;
+  } else if (entity === 'beverageSale') {
+    await sql`WITH deleted AS (
+        DELETE FROM beverage_sales WHERE id = ${id} RETURNING product_id, quantity
+      )
+      UPDATE beverage_products AS product
+      SET stock = product.stock + deleted.quantity
+      FROM deleted WHERE product.id = deleted.product_id`;
+  } else {
+    return json({ error: 'Tipo de registro inválido.' }, 400);
+  }
   return json({ ok: true });
 }
