@@ -236,6 +236,32 @@ body {
     font-weight: 800;
   }
 
+  .monthly-professional-carousel {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-behavior: smooth;
+    scroll-snap-type: inline mandatory;
+    scrollbar-width: none;
+  }
+
+  .monthly-professional-carousel::-webkit-scrollbar {
+    display: none;
+  }
+
+  .monthly-professional-carousel > section {
+    flex: 0 0 calc(100% - 1.25rem);
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+
+  .monthly-professional-carousel .monthly-payment-pending {
+    background: #fff0f0;
+    box-shadow: inset 4px 0 0 #dc2626;
+  }
+
   .professional-table {
     @apply w-full table-fixed text-sm;
   }
@@ -305,6 +331,16 @@ body {
   }
 
   .professional-carousel > section {
+    min-width: 0;
+  }
+
+  .monthly-professional-carousel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  .monthly-professional-carousel > section {
     min-width: 0;
   }
 }

@@ -138,13 +138,31 @@ export async function POST(request: Request) {
   }
 
   if (entity === 'monthlyCut') {
-    const month = clean(body.month, 7);
-    const professional = clean(body.professional, 30);
+    const requestedMonth = clean(body.month, 7);
+    const requestedStartDate = clean(body.startDate, 10);
+    const startDate = /^\d{4}-\d{2}-\d{2}$/.test(requestedStartDate)
+      ? requestedStartDate
+      : /^\d{4}-\d{2}$/.test(requestedMonth)
+        ? `${requestedMonth}-01`
+        : '';
+    const month = /^\d{4}-\d{2}$/.test(requestedMonth)
+      ? requestedMonth
+      : startDate.slice(0, 7);
+    const professionalInput = clean(body.professional, 30);
+    const professionalKey = professionalInput
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+    const professional =
+      professionalKey === 'flavio'
+        ? 'Flávio'
+        : professionalKey === 'fernando'
+          ? 'Fernando'
+          : professionalInput;
     const payment = clean(body.payment, 40);
     const client = clean(body.client);
     const cutsTotal = Math.max(1, positiveInt(body.cutsTotal));
     const cutsUsed = Math.min(cutsTotal, positiveInt(body.cutsUsed));
-    const startDate = clean(body.startDate, 10);
     if (
       !/^\d{4}-\d{2}$/.test(month) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
@@ -196,13 +214,31 @@ export async function PATCH(request: Request) {
   }
 
   if (entity === 'monthlyCut') {
-    const month = clean(body.month, 7);
-    const professional = clean(body.professional, 30);
+    const requestedMonth = clean(body.month, 7);
+    const requestedStartDate = clean(body.startDate, 10);
+    const startDate = /^\d{4}-\d{2}-\d{2}$/.test(requestedStartDate)
+      ? requestedStartDate
+      : /^\d{4}-\d{2}$/.test(requestedMonth)
+        ? `${requestedMonth}-01`
+        : '';
+    const month = /^\d{4}-\d{2}$/.test(requestedMonth)
+      ? requestedMonth
+      : startDate.slice(0, 7);
+    const professionalInput = clean(body.professional, 30);
+    const professionalKey = professionalInput
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+    const professional =
+      professionalKey === 'flavio'
+        ? 'Flávio'
+        : professionalKey === 'fernando'
+          ? 'Fernando'
+          : professionalInput;
     const payment = clean(body.payment, 40);
     const client = clean(body.client);
     const cutsTotal = Math.max(1, positiveInt(body.cutsTotal));
     const cutsUsed = Math.min(cutsTotal, positiveInt(body.cutsUsed));
-    const startDate = clean(body.startDate, 10);
     if (
       !id ||
       !/^\d{4}-\d{2}$/.test(month) ||
