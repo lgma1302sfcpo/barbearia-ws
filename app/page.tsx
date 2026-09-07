@@ -133,6 +133,27 @@ const hasPaymentOrPriceIssue = (item: Appointment) =>
   item.payment === 'Não pagou' ||
   (expectedServicePrice(item.service) !== null &&
     item.amount_cents !== expectedServicePrice(item.service));
+const monthlyProgressTone = (cutsUsed: number) => {
+  if (cutsUsed >= 4)
+    return {
+      badge: 'bg-red-100 text-red-800',
+      bar: 'bg-red-600',
+    };
+  if (cutsUsed === 3)
+    return {
+      badge: 'bg-amber-100 text-amber-800',
+      bar: 'bg-amber-500',
+    };
+  if (cutsUsed >= 1)
+    return {
+      badge: 'bg-emerald-100 text-emerald-800',
+      bar: 'bg-emerald-600',
+    };
+  return {
+    badge: 'bg-muted text-muted-foreground',
+    bar: 'bg-muted-foreground',
+  };
+};
 
 export default function Home() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -1312,6 +1333,7 @@ function MonthlyCuts({
                 <tbody>
                   {items.map((item) => {
                     const complete = item.cuts_used >= item.cuts_total;
+                    const progressTone = monthlyProgressTone(item.cuts_used);
                     const pending =
                       item.payment === 'Não pagou' || item.amount_cents === 0;
                     return (
@@ -1329,7 +1351,7 @@ function MonthlyCuts({
                           </strong>
                           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
                             <div
-                              className={`h-full rounded-full ${complete ? 'bg-emerald-600' : 'bg-[#f2a24a]'}`}
+                              className={`h-full rounded-full ${progressTone.bar}`}
                               style={{
                                 width: `${Math.min(100, (item.cuts_used / item.cuts_total) * 100)}%`,
                               }}
@@ -1573,6 +1595,7 @@ function MonthlyCutProfessionalPanel({
         <div className="divide-y">
           {items.map((item) => {
             const complete = item.cuts_used >= item.cuts_total;
+            const progressTone = monthlyProgressTone(item.cuts_used);
             const pending =
               item.payment === 'Não pagou' || item.amount_cents === 0;
             return (
@@ -1592,14 +1615,14 @@ function MonthlyCutProfessionalPanel({
                     </span>
                   </div>
                   <span
-                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${complete ? 'bg-emerald-100 text-emerald-800' : 'bg-[#fff0d5] text-[#9a4d13]'}`}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${progressTone.badge}`}
                   >
                     {item.cuts_used}/{item.cuts_total}
                   </span>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
                   <div
-                    className={`h-full rounded-full transition-all ${complete ? 'bg-emerald-600' : 'bg-[#f2a24a]'}`}
+                    className={`h-full rounded-full transition-all ${progressTone.bar}`}
                     style={{
                       width: `${Math.min(100, (item.cuts_used / item.cuts_total) * 100)}%`,
                     }}
