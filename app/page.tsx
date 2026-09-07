@@ -87,6 +87,23 @@ type DataSet = {
 };
 type Section = 'atendimentos' | 'mensais' | 'bebidas' | 'gastos' | 'resumo';
 
+const SECTIONS: Section[] = [
+  'atendimentos',
+  'mensais',
+  'bebidas',
+  'gastos',
+  'resumo',
+];
+const isSection = (value: string | null): value is Section =>
+  value !== null && SECTIONS.includes(value as Section);
+const sectionFromUrl = () => {
+  if (typeof window === 'undefined') return 'atendimentos';
+  const requestedSection = new URLSearchParams(window.location.search).get(
+    'aba',
+  );
+  return isSection(requestedSection) ? requestedSection : 'atendimentos';
+};
+
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -157,7 +174,7 @@ const monthlyProgressTone = (cutsUsed: number) => {
 
 export default function Home() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
-  const [section, setSection] = useState<Section>('atendimentos');
+  const [section, setSection] = useState<Section>(sectionFromUrl);
   const [selectedDate, setSelectedDate] = useState(today);
   const [month, setMonth] = useState(today.slice(0, 7));
   const [data, setData] = useState<DataSet>(emptyData);
@@ -166,6 +183,9 @@ export default function Home() {
   const [error, setError] = useState('');
   const [recentlyAddedId, setRecentlyAddedId] = useState<number | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const syncSectionWithUrl = useCallback(() => {
+    setSection(sectionFromUrl());
+  }, []);
 
   const refresh = useCallback(
     async (silent = false) => {
@@ -204,8 +224,20 @@ export default function Home() {
       .catch(() => setAuthenticated(false));
   }, []);
   useEffect(() => {
+    window.addEventListener('popstate', syncSectionWithUrl);
+    return () => window.removeEventListener('popstate', syncSectionWithUrl);
+  }, [syncSectionWithUrl]);
+  useEffect(() => {
     if (authenticated) void refresh(false);
   }, [authenticated, refresh]);
+
+  const navigateToSection = useCallback((nextSection: Section) => {
+    setSection(nextSection);
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('aba') === nextSection) return;
+    url.searchParams.set('aba', nextSection);
+    window.history.pushState({}, '', url);
+  }, []);
 
   const dayAppointments = data.appointments.filter(
     (item) => item.date === selectedDate,
@@ -263,7 +295,7 @@ export default function Home() {
   function openEntryForm() {
     const scrollY = window.scrollY;
     const isMobile = window.matchMedia('(max-width: 639px)').matches;
-    setSection('atendimentos');
+    navigateToSection('atendimentos');
     window.requestAnimationFrame(() =>
       window.requestAnimationFrame(() => {
         if (isMobile)
@@ -443,7 +475,7 @@ export default function Home() {
               );
             setMonth(String(item.date).slice(0, 7));
             setSelectedDate(String(item.date));
-            setSection('atendimentos');
+            navigateToSection('atendimentos');
             await refresh();
             return {
               id: result.id,
@@ -457,7 +489,7 @@ export default function Home() {
       ),
     ).catch(() => undefined);
     return () => lifecycle.abort();
-  }, [refresh]);
+  }, [navigateToSection, refresh]);
 
   if (authenticated !== true)
     return (
@@ -493,35 +525,35 @@ export default function Home() {
           >
             <Nav
               active={section === 'atendimentos'}
-              onClick={() => setSection('atendimentos')}
+              onClick={() => navigateToSection('atendimentos')}
               icon={<Scissors />}
             >
               Atendimentos
             </Nav>
             <Nav
               active={section === 'mensais'}
-              onClick={() => setSection('mensais')}
+              onClick={() => navigateToSection('mensais')}
               icon={<CalendarRange />}
             >
               Cortes mensais
             </Nav>
             <Nav
               active={section === 'bebidas'}
-              onClick={() => setSection('bebidas')}
+              onClick={() => navigateToSection('bebidas')}
               icon={<Beer />}
             >
               Bebidas
             </Nav>
             <Nav
               active={section === 'gastos'}
-              onClick={() => setSection('gastos')}
+              onClick={() => navigateToSection('gastos')}
               icon={<ReceiptText />}
             >
               Gastos
             </Nav>
             <Nav
               active={section === 'resumo'}
-              onClick={() => setSection('resumo')}
+              onClick={() => navigateToSection('resumo')}
               icon={<CircleDollarSign />}
             >
               Resumo mensal
@@ -620,29 +652,36 @@ export default function Home() {
         )}
 
         <section
-          className="relative mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+          className={`relative mb-6 grid gap-3 sm:grid-cols-2 ${section === 'mensais' ? 'xl:grid-cols-3' : 'xl:grid-cols-4'}`}
           aria-busy={loading}
         >
           {loading && (
-            <div className="absolute inset-0 z-10 grid gap-3 bg-background sm:grid-cols-2 xl:grid-cols-4">
-              {Array.from({ length: 4 }, (_, index) => (
-                <div
-                  key={index}
-                  className="space-y-4 rounded-2xl border bg-card p-5 shadow-sm"
-                >
-                  <Skeleton className="size-9 rounded-xl" />
-                  <Skeleton className="h-4 w-3/5" />
-                  <Skeleton className="h-8 w-2/3" />
-                </div>
-              ))}
+            <div
+              className={`absolute inset-0 z-10 grid gap-3 bg-background sm:grid-cols-2 ${section === 'mensais' ? 'xl:grid-cols-3' : 'xl:grid-cols-4'}`}
+            >
+              {Array.from(
+                { length: section === 'mensais' ? 3 : 4 },
+                (_, index) => (
+                  <div
+                    key={index}
+                    className="space-y-4 rounded-2xl border bg-card p-5 shadow-sm"
+                  >
+                    <Skeleton className="size-9 rounded-xl" />
+                    <Skeleton className="h-4 w-3/5" />
+                    <Skeleton className="h-8 w-2/3" />
+                  </div>
+                ),
+              )}
             </div>
           )}
-          <Summary
-            icon={<CircleDollarSign />}
-            label="Faturamento bruto do dia"
-            value={money.format(totals.services / 100)}
-            highlight
-          />
+          {section !== 'mensais' && (
+            <Summary
+              icon={<CircleDollarSign />}
+              label="Faturamento bruto do dia"
+              value={money.format(totals.services / 100)}
+              highlight
+            />
+          )}
           <Summary
             icon={<Users />}
             label="Clientes atendidos"
@@ -1178,8 +1217,6 @@ function MonthlyCuts({
     [editingId, setEditingId] = useState<number | null>(null),
     [submitting, setSubmitting] = useState(false);
 
-  const totalCuts = items.reduce((sum, item) => sum + item.cuts_total, 0);
-  const usedCuts = items.reduce((sum, item) => sum + item.cuts_used, 0);
   const received = items
     .filter((item) => item.payment !== 'Não pagou')
     .reduce((sum, item) => sum + item.amount_cents, 0);
@@ -1265,16 +1302,8 @@ function MonthlyCuts({
 
   return (
     <div className="space-y-5">
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MonthlyMetric label="Clientes mensais" value={String(items.length)} />
-        <MonthlyMetric
-          label="Cortes realizados"
-          value={`${usedCuts} de ${totalCuts}`}
-        />
-        <MonthlyMetric
-          label="Cortes restantes"
-          value={String(Math.max(0, totalCuts - usedCuts))}
-        />
         <MonthlyMetric
           label="Valor recebido"
           value={money.format(received / 100)}
