@@ -166,7 +166,7 @@ export async function POST(request: Request) {
     if (
       !/^\d{4}-\d{2}$/.test(month) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
-      !['FlÃ¡vio', 'Fernando'].includes(professional) ||
+      !['Flávio', 'Fernando'].includes(professional) ||
       !payment ||
       !client
     ) {
@@ -243,7 +243,7 @@ export async function PATCH(request: Request) {
       !id ||
       !/^\d{4}-\d{2}$/.test(month) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
-      !['FlÃ¡vio', 'Fernando'].includes(professional) ||
+      !['Flávio', 'Fernando'].includes(professional) ||
       !payment ||
       !client
     ) {
