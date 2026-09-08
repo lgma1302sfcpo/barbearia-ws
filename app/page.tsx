@@ -45,6 +45,7 @@ type Appointment = {
   service: string;
   client: string;
   amount_cents: number;
+  custom_amount: boolean;
   time: string;
 };
 type Product = { id: number; name: string; price_cents: number; stock: number };
@@ -864,6 +865,7 @@ function Appointments({
     [service, setService] = useState(''),
     [client, setClient] = useState('Cliente'),
     [amount, setAmount] = useState(''),
+    [customAmount, setCustomAmount] = useState(false),
     [time, setTime] = useState(
       new Date().toLocaleTimeString('pt-BR', {
         hour: '2-digit',
@@ -896,6 +898,7 @@ function Appointments({
     setService('');
     setClient('Cliente');
     setAmount('');
+    setCustomAmount(false);
   }
   function edit(item: Appointment) {
     setEditingId(item.id);
@@ -904,12 +907,14 @@ function Appointments({
     setService(item.service);
     setClient(item.client);
     setAmount(String(item.amount_cents / 100).replace('.', ','));
+    setCustomAmount(Boolean(item.custom_amount));
     setTime(item.time);
   }
   function selectService(value: string) {
     setService(value);
     const selected = SERVICE_OPTIONS.find((item) => item.name === value);
     setAmount(selected ? String(selected.cents / 100).replace('.', ',') : '');
+    setCustomAmount(false);
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -923,6 +928,7 @@ function Appointments({
       service,
       client,
       amountCents: toCents(amount),
+      customAmount,
       time,
     };
     try {
@@ -1048,14 +1054,43 @@ function Appointments({
               />
             </Field>
           </div>
-          <Field label="Valor">
-            <Input
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
-            />
-          </Field>
+          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
+            <Field label="Tipo de valor">
+              <NativeSelect
+                className="w-full"
+                value={customAmount ? 'custom' : 'standard'}
+                onChange={(e) => {
+                  const isCustom = e.target.value === 'custom';
+                  setCustomAmount(isCustom);
+                  if (!isCustom) {
+                    const selected = SERVICE_OPTIONS.find(
+                      (item) => item.name === service,
+                    );
+                    if (selected)
+                      setAmount(
+                        String(selected.cents / 100).replace('.', ','),
+                      );
+                  }
+                }}
+              >
+                <NativeSelectOption value="standard">
+                  Valor padrão
+                </NativeSelectOption>
+                <NativeSelectOption value="custom">
+                  Outro valor (desconto)
+                </NativeSelectOption>
+              </NativeSelect>
+            </Field>
+            <Field label={customAmount ? 'Outro valor' : 'Valor'}>
+              <Input
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className={customAmount ? 'border-red-500 text-red-600' : ''}
+                required
+              />
+            </Field>
+          </div>
           <Split cents={toCents(amount)} />
           <Submit loading={submitting}>
             {editingId ? 'Salvar alterações' : 'Adicionar atendimento'}
@@ -1126,7 +1161,7 @@ function ProfessionalPanel({
             {items.map((item) => (
               <tr
                 key={item.id}
-                className={`${item.id === recentlyAddedId ? 'recently-added' : ''} ${hasPaymentOrPriceIssue(item) ? 'payment-issue' : ''}`}
+                className={`${item.id === recentlyAddedId ? 'recently-added' : ''} ${item.payment === 'Dinheiro' ? 'cash-payment' : ''} ${hasPaymentOrPriceIssue(item) || item.custom_amount ? 'payment-issue' : ''}`}
               >
                 <td>
                   <strong>{item.service}</strong>
@@ -1151,7 +1186,7 @@ function ProfessionalPanel({
                   <small>{item.time}</small>
                 </td>
                 <td
-                  className={`text-right font-bold ${expectedServicePrice(item.service) !== null && item.amount_cents !== expectedServicePrice(item.service) ? 'issue-note' : 'text-foreground'}`}
+                  className={`text-right font-bold ${item.custom_amount || (expectedServicePrice(item.service) !== null && item.amount_cents !== expectedServicePrice(item.service)) ? 'issue-note' : 'text-foreground'}`}
                 >
                   {money.format(item.amount_cents / 100)}
                 </td>
