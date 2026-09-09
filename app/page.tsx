@@ -365,7 +365,10 @@ export default function Home() {
       method: 'DELETE',
     });
     if (!response.ok) {
-      setError('Não foi possível excluir o lançamento.');
+      const result = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      setError(result.error || 'Não foi possível excluir o lançamento.');
       return;
     }
     await refresh(true);
@@ -724,7 +727,7 @@ export default function Home() {
             products={data.products}
             sales={daySales}
             selectedDate={selectedDate}
-            post={(payload, success) => save(payload, success)}
+            save={save}
             remove={remove}
           />
         ) : section === 'gastos' ? (
@@ -1067,9 +1070,7 @@ function Appointments({
                       (item) => item.name === service,
                     );
                     if (selected)
-                      setAmount(
-                        String(selected.cents / 100).replace('.', ','),
-                      );
+                      setAmount(String(selected.cents / 100).replace('.', ','));
                   }
                 }}
               >
@@ -1792,13 +1793,17 @@ function Beverages({
   products,
   sales,
   selectedDate,
-  post,
+  save,
   remove,
 }: {
   products: Product[];
   sales: BeverageSale[];
   selectedDate: string;
-  post: (payload: Record<string, unknown>, success: string) => Promise<boolean>;
+  save: (
+    payload: Record<string, unknown>,
+    success: string,
+    method?: 'POST' | 'PATCH',
+  ) => Promise<boolean>;
   remove: (entity: string, id: number) => Promise<void>;
 }) {
   const [productId, setProductId] = useState(''),
@@ -1807,6 +1812,8 @@ function Beverages({
     [name, setName] = useState(''),
     [price, setPrice] = useState('6'),
     [stock, setStock] = useState('0'),
+    [editingProductId, setEditingProductId] = useState<number | null>(null),
+    [editingSaleId, setEditingSaleId] = useState<number | null>(null),
     [selling, setSelling] = useState(false),
     [creatingProduct, setCreatingProduct] = useState(false);
   async function sale(event: FormEvent) {
@@ -1814,19 +1821,23 @@ function Beverages({
     setSelling(true);
     try {
       if (
-        await post(
+        await save(
           {
             entity: 'beverageSale',
+            id: editingSaleId ?? undefined,
             date: selectedDate,
             productId: Number(productId),
             quantity: Number(quantity),
             client,
           },
-          'Venda de bebida adicionada.',
+          editingSaleId ? 'Venda atualizada.' : 'Venda de bebida adicionada.',
+          editingSaleId ? 'PATCH' : 'POST',
         )
       ) {
         setProductId('');
         setQuantity('1');
+        setClient('Cliente');
+        setEditingSaleId(null);
       }
     } finally {
       setSelling(false);
@@ -1837,18 +1848,22 @@ function Beverages({
     setCreatingProduct(true);
     try {
       if (
-        await post(
+        await save(
           {
             entity: 'product',
+            id: editingProductId ?? undefined,
             name,
             priceCents: toCents(price),
             stock: Number(stock),
           },
-          'Bebida cadastrada.',
+          editingProductId ? 'Bebida atualizada.' : 'Bebida cadastrada.',
+          editingProductId ? 'PATCH' : 'POST',
         )
       ) {
         setName('');
         setStock('0');
+        setPrice('6');
+        setEditingProductId(null);
       }
     } finally {
       setCreatingProduct(false);
@@ -1858,6 +1873,18 @@ function Beverages({
     (sum, item) => sum + item.quantity * item.unit_price_cents,
     0,
   );
+  function editSale(item: BeverageSale) {
+    setEditingSaleId(item.id);
+    setProductId(String(item.product_id));
+    setQuantity(String(item.quantity));
+    setClient(item.client);
+  }
+  function editProduct(item: Product) {
+    setEditingProductId(item.id);
+    setName(item.name);
+    setPrice(String(item.price_cents / 100).replace('.', ','));
+    setStock(String(item.stock));
+  }
   return (
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-5">
@@ -1888,8 +1915,21 @@ function Beverages({
                         (item.quantity * item.unit_price_cents) / 100,
                       )}
                     </td>
-                    <td className="w-10">
-                      <Delete onClick={() => remove('beverageSale', item.id)} />
+                    <td className="w-20">
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => editSale(item)}
+                          aria-label="Editar venda"
+                        >
+                          <Pencil />
+                        </Button>
+                        <Delete
+                          onClick={() => remove('beverageSale', item.id)}
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1922,6 +1962,18 @@ function Beverages({
                   <p className="mt-2 text-sm text-muted-foreground">
                     {money.format(item.price_cents / 100)}
                   </p>
+                  <div className="mt-3 flex justify-end border-t pt-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => editProduct(item)}
+                      aria-label="Editar bebida"
+                    >
+                      <Pencil />
+                    </Button>
+                    <Delete onClick={() => remove('product', item.id)} />
+                  </div>
                 </article>
               ))}
             </div>
@@ -1933,7 +1985,7 @@ function Beverages({
       <aside className="space-y-5">
         <form id="entry-form" className="form-card" onSubmit={sale}>
           <FormTitle
-            title="Vender bebida"
+            title={editingSaleId ? 'Editar venda' : 'Vender bebida'}
             text="O preço entra automaticamente."
           />
           <Field label="Bebida">
@@ -1969,13 +2021,28 @@ function Beverages({
               />
             </Field>
           </div>
+          {editingSaleId && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => {
+                setEditingSaleId(null);
+                setProductId('');
+                setQuantity('1');
+                setClient('Cliente');
+              }}
+            >
+              <X /> Cancelar edição
+            </Button>
+          )}
           <Submit disabled={!products.length} loading={selling}>
-            Registrar venda
+            {editingSaleId ? 'Salvar venda' : 'Registrar venda'}
           </Submit>
         </form>
         <form className="form-card" onSubmit={product}>
           <FormTitle
-            title="Cadastrar bebida"
+            title={editingProductId ? 'Editar bebida' : 'Cadastrar bebida'}
             text="Defina preço e estoque inicial."
           />
           <Field label="Nome">
@@ -2003,7 +2070,24 @@ function Beverages({
               />
             </Field>
           </div>
-          <Submit loading={creatingProduct}>Cadastrar bebida</Submit>
+          {editingProductId && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => {
+                setEditingProductId(null);
+                setName('');
+                setPrice('6');
+                setStock('0');
+              }}
+            >
+              <X /> Cancelar edição
+            </Button>
+          )}
+          <Submit loading={creatingProduct}>
+            {editingProductId ? 'Salvar bebida' : 'Cadastrar bebida'}
+          </Submit>
         </form>
       </aside>
     </div>

@@ -198,6 +198,60 @@ export async function PATCH(request: Request) {
   const entity = clean(body.entity, 30);
   const sql = await database();
 
+  if (entity === 'product') {
+    const name = clean(body.name, 60);
+    const priceCents = positiveInt(body.priceCents);
+    if (!id || !name || priceCents < 1)
+      return json({ error: 'Informe o nome e o preço da bebida.' }, 400);
+    try {
+      const rows = await sql`UPDATE beverage_products SET
+          name = ${name}, price_cents = ${priceCents}, stock = ${positiveInt(body.stock)}
+        WHERE id = ${id} RETURNING id`;
+      if (!rows.length) return json({ error: 'Bebida não encontrada.' }, 404);
+      return json({ id, updated: true });
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505')
+        return json({ error: 'Já existe uma bebida com esse nome.' }, 409);
+      throw error;
+    }
+  }
+
+  if (entity === 'beverageSale') {
+    const productId = positiveInt(body.productId);
+    const quantity = positiveInt(body.quantity);
+    const date = clean(body.date, 10);
+    if (!id || !productId || quantity < 1 || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+      return json({ error: 'Preencha a bebida, a data e a quantidade.' }, 400);
+    const rows = await sql`WITH previous AS (
+        SELECT product_id, quantity FROM beverage_sales WHERE id = ${id}
+      ), inventory AS (
+        UPDATE beverage_products AS product SET stock = stock
+          + CASE WHEN product.id = previous.product_id THEN previous.quantity ELSE 0 END
+          - CASE WHEN product.id = ${productId} THEN ${quantity} ELSE 0 END
+        FROM previous
+        WHERE product.id IN (previous.product_id, ${productId})
+          AND EXISTS (
+            SELECT 1 FROM beverage_products AS target
+            WHERE target.id = ${productId}
+              AND target.stock
+                + CASE WHEN target.id = previous.product_id THEN previous.quantity ELSE 0 END
+                >= ${quantity}
+          )
+        RETURNING product.id
+      ), selected AS (
+        SELECT id, name, price_cents FROM beverage_products
+        WHERE id = ${productId} AND EXISTS (SELECT 1 FROM inventory)
+      )
+      UPDATE beverage_sales AS sale SET
+        date = ${date}, product_id = selected.id, product_name = selected.name,
+        client = ${clean(body.client) || 'Cliente'}, quantity = ${quantity},
+        unit_price_cents = selected.price_cents
+      FROM selected WHERE sale.id = ${id} RETURNING sale.id`;
+    if (!rows.length)
+      return json({ error: 'Bebida inválida ou estoque insuficiente.' }, 400);
+    return json({ id, updated: true });
+  }
+
   if (entity === 'monthlyCutUse') {
     const date = clean(body.date, 10);
     if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(date))
@@ -319,6 +373,22 @@ export async function DELETE(request: Request) {
       UPDATE beverage_products AS product
       SET stock = product.stock + deleted.quantity
       FROM deleted WHERE product.id = deleted.product_id`;
+  } else if (entity === 'product') {
+    try {
+      const rows =
+        await sql`DELETE FROM beverage_products WHERE id = ${id} RETURNING id`;
+      if (!rows.length) return json({ error: 'Bebida não encontrada.' }, 404);
+    } catch (error) {
+      if ((error as { code?: string }).code === '23503')
+        return json(
+          {
+            error:
+              'Esta bebida possui vendas registradas e não pode ser excluída.',
+          },
+          409,
+        );
+      throw error;
+    }
   } else if (entity === 'monthlyCut') {
     await sql`DELETE FROM monthly_cuts WHERE id = ${id}`;
   } else {
