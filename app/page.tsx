@@ -243,6 +243,9 @@ export default function Home() {
   const dayAppointments = data.appointments.filter(
     (item) => item.date === selectedDate,
   );
+  const dayMonthlyCuts = data.monthlyCuts.filter(
+    (item) => item.start_date === selectedDate,
+  );
   const daySales = data.beverageSales.filter(
     (item) => item.date === selectedDate,
   );
@@ -250,10 +253,11 @@ export default function Home() {
     (item) => item.date === selectedDate,
   );
   const totals = useMemo(() => {
-    const flavio = dayAppointments
+    const dailyServices = [...dayAppointments, ...dayMonthlyCuts];
+    const flavio = dailyServices
       .filter((item) => item.professional === 'Flávio')
       .reduce((sum, item) => sum + item.amount_cents, 0);
-    const fernando = dayAppointments
+    const fernando = dailyServices
       .filter((item) => item.professional === 'Fernando')
       .reduce((sum, item) => sum + item.amount_cents, 0);
     const drinks = daySales.reduce(
@@ -265,13 +269,14 @@ export default function Home() {
       0,
     );
     return { flavio, fernando, services: flavio + fernando, drinks, expenses };
-  }, [dayAppointments, daySales, dayExpenses]);
+  }, [dayAppointments, dayMonthlyCuts, daySales, dayExpenses]);
 
   const monthly = useMemo(() => {
-    const flavio = data.appointments
+    const monthlyServices = [...data.appointments, ...data.monthlyCuts];
+    const flavio = monthlyServices
       .filter((item) => item.professional === 'Flávio')
       .reduce((sum, item) => sum + item.amount_cents, 0);
-    const fernando = data.appointments
+    const fernando = monthlyServices
       .filter((item) => item.professional === 'Fernando')
       .reduce((sum, item) => sum + item.amount_cents, 0);
     const drinks = data.beverageSales.reduce(
@@ -689,7 +694,7 @@ export default function Home() {
           <Summary
             icon={<Users />}
             label="Clientes atendidos"
-            value={String(dayAppointments.length)}
+            value={String(dayAppointments.length + dayMonthlyCuts.length)}
           />
           <ProfessionalSplitSummary
             flavio={totals.flavio}
@@ -707,6 +712,7 @@ export default function Home() {
         ) : section === 'atendimentos' ? (
           <Appointments
             items={dayAppointments}
+            monthlyCuts={dayMonthlyCuts}
             totals={totals}
             selectedDate={selectedDate}
             save={save}
@@ -842,6 +848,7 @@ function PinGate({
 
 function Appointments({
   items,
+  monthlyCuts,
   totals,
   selectedDate,
   save,
@@ -850,6 +857,7 @@ function Appointments({
   recentlyAddedId,
 }: {
   items: Appointment[];
+  monthlyCuts: MonthlyCut[];
   totals: ReturnType<typeof dayTotals>;
   selectedDate: string;
   save: (
@@ -949,6 +957,12 @@ function Appointments({
   const fernandoItems = items.filter(
     (item) => item.professional === 'Fernando',
   );
+  const flavioMonthlyCuts = monthlyCuts.filter(
+    (item) => item.professional === 'Flávio',
+  );
+  const fernandoMonthlyCuts = monthlyCuts.filter(
+    (item) => item.professional === 'Fernando',
+  );
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -957,6 +971,7 @@ function Appointments({
             name="Flávio"
             date={selectedDate}
             items={flavioItems}
+            monthlyCuts={flavioMonthlyCuts}
             total={totals.flavio}
             remove={remove}
             edit={edit}
@@ -966,6 +981,7 @@ function Appointments({
             name="Fernando"
             date={selectedDate}
             items={fernandoItems}
+            monthlyCuts={fernandoMonthlyCuts}
             total={totals.fernando}
             remove={remove}
             edit={edit}
@@ -1107,6 +1123,7 @@ function ProfessionalPanel({
   name,
   date,
   items,
+  monthlyCuts,
   total,
   remove,
   edit,
@@ -1115,6 +1132,7 @@ function ProfessionalPanel({
   name: 'Flávio' | 'Fernando';
   date: string;
   items: Appointment[];
+  monthlyCuts: MonthlyCut[];
   total: number;
   remove: (entity: string, id: number) => Promise<void>;
   edit: (item: Appointment) => void;
@@ -1136,7 +1154,8 @@ function ProfessionalPanel({
           </p>
           <h3 className="text-lg font-black">{name}</h3>
           <p className="text-xs text-muted-foreground">
-            {displayDate(date)} · {items.length} atendimentos
+            {displayDate(date)} · {items.length + monthlyCuts.length}{' '}
+            atendimentos
           </p>
         </div>
         <div className="text-right">
@@ -1148,7 +1167,7 @@ function ProfessionalPanel({
           </p>
         </div>
       </div>
-      {items.length ? (
+      {items.length || monthlyCuts.length ? (
         <table className="professional-table">
           <thead>
             <tr>
@@ -1206,6 +1225,35 @@ function ProfessionalPanel({
                     <Delete onClick={() => remove('appointment', item.id)} />
                   </div>
                 </td>
+              </tr>
+            ))}
+            {monthlyCuts.map((item) => (
+              <tr
+                key={`monthly-${item.id}`}
+                className={`${item.payment === 'Dinheiro' ? 'cash-payment' : ''} ${item.payment === 'Não pagou' || item.amount_cents === 0 ? 'payment-issue' : ''}`}
+              >
+                <td>
+                  <strong>Corte mensal</strong>
+                  <small>{item.client}</small>
+                  <small>
+                    Plano com {item.cuts_total}{' '}
+                    {item.cuts_total === 1 ? 'corte' : 'cortes'}
+                  </small>
+                </td>
+                <td>
+                  <strong
+                    className={`!font-medium ${item.payment === 'Não pagou' ? 'issue-note' : ''}`}
+                  >
+                    {item.payment}
+                  </strong>
+                  <small>{item.time}</small>
+                </td>
+                <td
+                  className={`text-right font-bold ${item.payment === 'Não pagou' || item.amount_cents === 0 ? 'issue-note' : 'text-foreground'}`}
+                >
+                  {money.format(item.amount_cents / 100)}
+                </td>
+                <td />
               </tr>
             ))}
           </tbody>
@@ -2231,6 +2279,7 @@ function Monthly({
   const days = Array.from(
     new Set([
       ...data.appointments.map((x) => x.date),
+      ...data.monthlyCuts.map((x) => x.start_date),
       ...data.beverageSales.map((x) => x.date),
       ...data.expenses.map((x) => x.date),
     ]),
@@ -2258,13 +2307,14 @@ function Monthly({
             </thead>
             <tbody>
               {days.map((date) => {
-                const appointments = data.appointments.filter(
-                  (x) => x.date === date,
-                );
-                const flavio = appointments
+                const services = [
+                  ...data.appointments.filter((x) => x.date === date),
+                  ...data.monthlyCuts.filter((x) => x.start_date === date),
+                ];
+                const flavio = services
                   .filter((x) => x.professional === 'Flávio')
                   .reduce((s, x) => s + x.amount_cents, 0);
-                const fernando = appointments
+                const fernando = services
                   .filter((x) => x.professional === 'Fernando')
                   .reduce((s, x) => s + x.amount_cents, 0);
                 const drinks = data.beverageSales
