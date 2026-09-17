@@ -130,6 +130,10 @@ const SERVICE_OPTIONS = [
   { name: 'Corte + alisante', cents: 6500 },
   { name: 'Corte + luzes', cents: 8000 },
   { name: 'Corte + platinado', cents: 14000 },
+  { name: 'Corte + barba + pigmentação', cents: 9500 },
+  { name: 'Corte + barba + alisante', cents: 9500 },
+  { name: 'Corte + luzes + barba', cents: 12000 },
+  { name: 'Pezinho + barba', cents: 5500 },
   { name: 'Pezinho', cents: 1500 },
   { name: 'Sobrancelha', cents: 700 },
 ] as const;
