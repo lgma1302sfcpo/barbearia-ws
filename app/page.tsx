@@ -65,6 +65,7 @@ type Expense = {
   category: string;
   payment: string;
   amount_cents: number;
+  professional: 'Flávio' | 'Fernando' | null;
 };
 type MonthlyCut = {
   id: number;
@@ -272,7 +273,21 @@ export default function Home() {
       (sum, item) => sum + item.amount_cents,
       0,
     );
-    return { flavio, fernando, services: flavio + fernando, drinks, expenses };
+    const flavioExpenses = dayExpenses
+      .filter((item) => item.professional === 'Flávio')
+      .reduce((sum, item) => sum + item.amount_cents, 0);
+    const fernandoExpenses = dayExpenses
+      .filter((item) => item.professional === 'Fernando')
+      .reduce((sum, item) => sum + item.amount_cents, 0);
+    return {
+      flavio,
+      fernando,
+      services: flavio + fernando,
+      drinks,
+      expenses,
+      flavioExpenses,
+      fernandoExpenses,
+    };
   }, [dayAppointments, dayMonthlyCuts, daySales, dayExpenses]);
 
   const monthly = useMemo(() => {
@@ -291,7 +306,21 @@ export default function Home() {
       (sum, item) => sum + item.amount_cents,
       0,
     );
-    return { flavio, fernando, services: flavio + fernando, drinks, expenses };
+    const flavioExpenses = data.expenses
+      .filter((item) => item.professional === 'Flávio')
+      .reduce((sum, item) => sum + item.amount_cents, 0);
+    const fernandoExpenses = data.expenses
+      .filter((item) => item.professional === 'Fernando')
+      .reduce((sum, item) => sum + item.amount_cents, 0);
+    return {
+      flavio,
+      fernando,
+      services: flavio + fernando,
+      drinks,
+      expenses,
+      flavioExpenses,
+      fernandoExpenses,
+    };
   }, [data]);
 
   function changeMonth(offset: number) {
@@ -703,6 +732,8 @@ export default function Home() {
           <ProfessionalSplitSummary
             flavio={totals.flavio}
             fernando={totals.fernando}
+            flavioExpenses={totals.flavioExpenses}
+            fernandoExpenses={totals.fernandoExpenses}
           />
           <Summary
             icon={<Banknote />}
@@ -717,6 +748,7 @@ export default function Home() {
           <Appointments
             items={dayAppointments}
             monthlyCuts={dayMonthlyCuts}
+            expenses={dayExpenses}
             totals={totals}
             selectedDate={selectedDate}
             save={save}
@@ -853,6 +885,7 @@ function PinGate({
 function Appointments({
   items,
   monthlyCuts,
+  expenses,
   totals,
   selectedDate,
   save,
@@ -862,6 +895,7 @@ function Appointments({
 }: {
   items: Appointment[];
   monthlyCuts: MonthlyCut[];
+  expenses: Expense[];
   totals: ReturnType<typeof dayTotals>;
   selectedDate: string;
   save: (
@@ -967,6 +1001,12 @@ function Appointments({
   const fernandoMonthlyCuts = monthlyCuts.filter(
     (item) => item.professional === 'Fernando',
   );
+  const flavioExpenses = expenses.filter(
+    (item) => item.professional === 'Flávio',
+  );
+  const fernandoExpenses = expenses.filter(
+    (item) => item.professional === 'Fernando',
+  );
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -976,6 +1016,7 @@ function Appointments({
             date={selectedDate}
             items={flavioItems}
             monthlyCuts={flavioMonthlyCuts}
+            expenses={flavioExpenses}
             total={totals.flavio}
             remove={remove}
             edit={edit}
@@ -986,6 +1027,7 @@ function Appointments({
             date={selectedDate}
             items={fernandoItems}
             monthlyCuts={fernandoMonthlyCuts}
+            expenses={fernandoExpenses}
             total={totals.fernando}
             remove={remove}
             edit={edit}
@@ -1128,6 +1170,7 @@ function ProfessionalPanel({
   date,
   items,
   monthlyCuts,
+  expenses,
   total,
   remove,
   edit,
@@ -1137,12 +1180,17 @@ function ProfessionalPanel({
   date: string;
   items: Appointment[];
   monthlyCuts: MonthlyCut[];
+  expenses: Expense[];
   total: number;
   remove: (entity: string, id: number) => Promise<void>;
   edit: (item: Appointment) => void;
   recentlyAddedId: number | null;
 }) {
   const flavio = name === 'Flávio';
+  const expensesTotal = expenses.reduce(
+    (sum, item) => sum + item.amount_cents,
+    0,
+  );
   return (
     <section
       className={`overflow-hidden rounded-2xl border bg-card shadow-sm ${flavio ? 'border-[#8fc8b9]' : 'border-[#b6b9dd]'}`}
@@ -1264,6 +1312,32 @@ function ProfessionalPanel({
         </table>
       ) : (
         <Empty text={`Nenhum atendimento de ${name} neste dia.`} />
+      )}
+      {expenses.length > 0 && (
+        <div className="border-t px-4 py-3">
+          <p className="text-xs font-bold uppercase tracking-[.14em] text-red-600">
+            Gastos descontados de {name}
+          </p>
+          <ul className="mt-2 space-y-1">
+            {expenses.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-center justify-between text-sm"
+              >
+                <span>{item.description}</span>
+                <span className="font-bold text-red-600">
+                  -{money.format(item.amount_cents / 100)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 flex items-center justify-between border-t pt-2 text-xs font-bold">
+            <span>Repasse líquido (60%)</span>
+            <span>
+              {money.format((total * 0.6 - expensesTotal) / 100)}
+            </span>
+          </div>
+        </div>
       )}
     </section>
   );
@@ -2161,6 +2235,9 @@ function Expenses({
     [category, setCategory] = useState(''),
     [payment, setPayment] = useState(''),
     [amount, setAmount] = useState(''),
+    [professional, setProfessional] = useState<'' | 'Flávio' | 'Fernando'>(
+      '',
+    ),
     [submitting, setSubmitting] = useState(false);
   const total = items.reduce((sum, item) => sum + item.amount_cents, 0);
   async function submit(event: FormEvent) {
@@ -2176,6 +2253,7 @@ function Expenses({
             category,
             payment,
             amountCents: toCents(amount),
+            professional: professional || undefined,
           },
           'Gasto adicionado.',
         )
@@ -2184,6 +2262,7 @@ function Expenses({
         setCategory('');
         setPayment('');
         setAmount('');
+        setProfessional('');
       }
     } finally {
       setSubmitting(false);
@@ -2202,6 +2281,7 @@ function Expenses({
               <tr>
                 <th>Descrição</th>
                 <th>Categoria</th>
+                <th>Profissional</th>
                 <th>Pagamento</th>
                 <th className="text-right">Valor</th>
                 <th />
@@ -2212,6 +2292,7 @@ function Expenses({
                 <tr key={item.id}>
                   <td className="font-bold">{item.description}</td>
                   <td>{item.category}</td>
+                  <td>{item.professional ?? 'Geral'}</td>
                   <td>{item.payment}</td>
                   <td className="text-right font-bold">
                     {money.format(item.amount_cents / 100)}
@@ -2252,6 +2333,19 @@ function Expenses({
             <NativeSelectOption>Aluguel</NativeSelectOption>
             <NativeSelectOption>Contas</NativeSelectOption>
             <NativeSelectOption>Outros</NativeSelectOption>
+          </NativeSelect>
+        </Field>
+        <Field label="Profissional (opcional)">
+          <NativeSelect
+            className="w-full"
+            value={professional}
+            onChange={(e) =>
+              setProfessional(e.target.value as '' | 'Flávio' | 'Fernando')
+            }
+          >
+            <NativeSelectOption value="">Geral (barbearia)</NativeSelectOption>
+            <NativeSelectOption>Flávio</NativeSelectOption>
+            <NativeSelectOption>Fernando</NativeSelectOption>
           </NativeSelect>
         </Field>
         <div className="grid grid-cols-2 gap-3">
@@ -2370,9 +2464,17 @@ function Monthly({
             title="Repasses do mês"
             text="Mesma regra da planilha: 60% e 40%."
           />
-          <PersonSummary name="Flávio" total={totals.flavio} />
+          <PersonSummary
+            name="Flávio"
+            total={totals.flavio}
+            expenses={totals.flavioExpenses}
+          />
           <div className="my-4 h-px bg-border" />
-          <PersonSummary name="Fernando" total={totals.fernando} />
+          <PersonSummary
+            name="Fernando"
+            total={totals.fernando}
+            expenses={totals.fernandoExpenses}
+          />
         </section>
       </aside>
     </div>
@@ -2385,6 +2487,8 @@ const dayTotals = () => ({
   services: 0,
   drinks: 0,
   expenses: 0,
+  flavioExpenses: 0,
+  fernandoExpenses: 0,
 });
 const monthTotals = dayTotals;
 function Nav({
@@ -2438,9 +2542,13 @@ function Summary({
 function ProfessionalSplitSummary({
   flavio,
   fernando,
+  flavioExpenses = 0,
+  fernandoExpenses = 0,
 }: {
   flavio: number;
   fernando: number;
+  flavioExpenses?: number;
+  fernandoExpenses?: number;
 }) {
   return (
     <article className="rounded-2xl border bg-card p-5 shadow-sm">
@@ -2452,14 +2560,24 @@ function ProfessionalSplitSummary({
         <div>
           <p className="text-xs font-semibold text-[#397567]">Flávio</p>
           <p className="text-lg font-black tabular-nums">
-            {money.format((flavio * 0.6) / 100)}
+            {money.format((flavio * 0.6 - flavioExpenses) / 100)}
           </p>
+          {flavioExpenses > 0 && (
+            <p className="text-xs text-red-600">
+              -{money.format(flavioExpenses / 100)} em gastos
+            </p>
+          )}
         </div>
         <div>
           <p className="text-xs font-semibold text-[#565b91]">Fernando</p>
           <p className="text-lg font-black tabular-nums">
-            {money.format((fernando * 0.6) / 100)}
+            {money.format((fernando * 0.6 - fernandoExpenses) / 100)}
           </p>
+          {fernandoExpenses > 0 && (
+            <p className="text-xs text-red-600">
+              -{money.format(fernandoExpenses / 100)} em gastos
+            </p>
+          )}
         </div>
       </div>
     </article>
@@ -2664,10 +2782,18 @@ function ProfessionalCard({
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl bg-white/7 p-4">
-          <PersonSummary name="Flávio" total={daily.flavio} />
+          <PersonSummary
+            name="Flávio"
+            total={daily.flavio}
+            expenses={daily.flavioExpenses}
+          />
         </div>
         <div className="rounded-xl bg-white/7 p-4">
-          <PersonSummary name="Fernando" total={daily.fernando} />
+          <PersonSummary
+            name="Fernando"
+            total={daily.fernando}
+            expenses={daily.fernandoExpenses}
+          />
         </div>
       </div>
       <div className="mt-4 grid gap-2 rounded-xl border border-white/10 p-3 text-xs text-white/65 sm:grid-cols-2">
@@ -2677,7 +2803,16 @@ function ProfessionalCard({
     </section>
   );
 }
-function PersonSummary({ name, total }: { name: string; total: number }) {
+function PersonSummary({
+  name,
+  total,
+  expenses = 0,
+}: {
+  name: string;
+  total: number;
+  expenses?: number;
+}) {
+  const share = total * 0.6 - expenses;
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -2690,6 +2825,16 @@ function PersonSummary({ name, total }: { name: string; total: number }) {
         <span>60%: {money.format((total * 0.6) / 100)}</span>
         <span>40%: {money.format((total * 0.4) / 100)}</span>
       </div>
+      {expenses > 0 && (
+        <div className="mt-2 flex justify-between gap-2 text-xs">
+          <span className="text-red-600">
+            Gastos dele: -{money.format(expenses / 100)}
+          </span>
+          <span className="font-bold">
+            Repasse líquido: {money.format(share / 100)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

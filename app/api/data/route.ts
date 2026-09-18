@@ -124,6 +124,10 @@ export async function POST(request: Request) {
     const category = clean(body.category, 60);
     const payment = clean(body.payment, 40);
     const amountCents = positiveInt(body.amountCents);
+    const professionalInput = clean(body.professional, 30);
+    const professional = ['Flávio', 'Fernando'].includes(professionalInput)
+      ? professionalInput
+      : null;
     if (!description || !category || !payment || amountCents < 1)
       return json(
         {
@@ -133,8 +137,8 @@ export async function POST(request: Request) {
         400,
       );
     const rows =
-      await sql`INSERT INTO expenses (date, description, category, payment, amount_cents, created_at)
-      VALUES (${clean(body.date, 10)}, ${description}, ${category}, ${payment}, ${amountCents}, ${now}) RETURNING id`;
+      await sql`INSERT INTO expenses (date, description, category, payment, amount_cents, professional, created_at)
+      VALUES (${clean(body.date, 10)}, ${description}, ${category}, ${payment}, ${amountCents}, ${professional}, ${now}) RETURNING id`;
     return json({ id: rows[0].id }, 201);
   }
 
