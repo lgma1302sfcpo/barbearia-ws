@@ -58,6 +58,7 @@ export async function POST(request: Request) {
     const payment = clean(body.payment, 40);
     const service = clean(body.service);
     const amountCents = positiveInt(body.amountCents);
+    const tipCents = positiveInt(body.tipCents);
     const customAmount = body.customAmount === true;
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
@@ -75,9 +76,9 @@ export async function POST(request: Request) {
       );
     }
     const rows = await sql`INSERT INTO appointments
-      (date, professional, payment, service, client, amount_cents, custom_amount, time, created_at)
+      (date, professional, payment, service, client, amount_cents, tip_cents, custom_amount, time, created_at)
       VALUES (${date}, ${professional}, ${payment}, ${service},
-        ${clean(body.client) || 'Cliente'}, ${amountCents}, ${customAmount}, ${clean(body.time, 5) || '00:00'}, ${now})
+        ${clean(body.client) || 'Cliente'}, ${amountCents}, ${tipCents}, ${customAmount}, ${clean(body.time, 5) || '00:00'}, ${now})
       RETURNING id`;
     return json({ id: rows[0].id }, 201);
   }
@@ -330,6 +331,7 @@ export async function PATCH(request: Request) {
   const payment = clean(body.payment, 40);
   const service = clean(body.service);
   const amountCents = positiveInt(body.amountCents);
+  const tipCents = positiveInt(body.tipCents);
   const customAmount = body.customAmount === true;
   if (
     !id ||
@@ -350,7 +352,7 @@ export async function PATCH(request: Request) {
   const rows = await sql`UPDATE appointments SET
       date = ${date}, professional = ${professional}, payment = ${payment},
       service = ${service}, client = ${clean(body.client) || 'Cliente'}, amount_cents = ${amountCents},
-      custom_amount = ${customAmount},
+      tip_cents = ${tipCents}, custom_amount = ${customAmount},
       time = ${clean(body.time, 5) || '00:00'}
     WHERE id = ${id} RETURNING id`;
   if (!rows.length) return json({ error: 'Atendimento não encontrado.' }, 404);

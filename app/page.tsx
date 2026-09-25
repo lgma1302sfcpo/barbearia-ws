@@ -45,6 +45,7 @@ type Appointment = {
   service: string;
   client: string;
   amount_cents: number;
+  tip_cents: number;
   custom_amount: boolean;
   time: string;
 };
@@ -259,12 +260,24 @@ export default function Home() {
   );
   const totals = useMemo(() => {
     const dailyServices = [...dayAppointments, ...dayMonthlyCuts];
-    const flavio = dailyServices
+    const flavioServices = dailyServices
+      .filter((item) => item.professional === 'Flávio' && item.payment !== 'Não pagou')
+      .reduce((sum, item) => sum + item.amount_cents, 0);
+    const flavioTips = dayAppointments
       .filter((item) => item.professional === 'Flávio')
+      .reduce((sum, item) => sum + (item.tip_cents || 0), 0);
+    const flavio = flavioServices + flavioTips;
+    const fernandoServices = dailyServices
+      .filter((item) => item.professional === 'Fernando' && item.payment !== 'Não pagou')
       .reduce((sum, item) => sum + item.amount_cents, 0);
-    const fernando = dailyServices
+    const fernandoTips = dayAppointments
       .filter((item) => item.professional === 'Fernando')
-      .reduce((sum, item) => sum + item.amount_cents, 0);
+      .reduce((sum, item) => sum + (item.tip_cents || 0), 0);
+    const fernando = fernandoServices + fernandoTips;
+    const caixinha = dayAppointments.reduce((sum, item) => sum + (item.tip_cents || 0), 0);
+    const naoPagou = dailyServices
+      .filter((item) => item.payment === 'Não pagou')
+      .reduce((sum, item) => sum + Math.round(item.amount_cents * 0.4), 0);
     const drinks = daySales.reduce(
       (sum, item) => sum + item.quantity * item.unit_price_cents,
       0,
@@ -283,6 +296,8 @@ export default function Home() {
       flavio,
       fernando,
       services: flavio + fernando,
+      caixinha,
+      naoPagou,
       drinks,
       expenses,
       flavioExpenses,
@@ -292,12 +307,24 @@ export default function Home() {
 
   const monthly = useMemo(() => {
     const monthlyServices = [...data.appointments, ...data.monthlyCuts];
-    const flavio = monthlyServices
+    const flavioServices = monthlyServices
+      .filter((item) => item.professional === 'Flávio' && item.payment !== 'Não pagou')
+      .reduce((sum, item) => sum + item.amount_cents, 0);
+    const flavioTips = data.appointments
       .filter((item) => item.professional === 'Flávio')
+      .reduce((sum, item) => sum + (item.tip_cents || 0), 0);
+    const flavio = flavioServices + flavioTips;
+    const fernandoServices = monthlyServices
+      .filter((item) => item.professional === 'Fernando' && item.payment !== 'Não pagou')
       .reduce((sum, item) => sum + item.amount_cents, 0);
-    const fernando = monthlyServices
+    const fernandoTips = data.appointments
       .filter((item) => item.professional === 'Fernando')
-      .reduce((sum, item) => sum + item.amount_cents, 0);
+      .reduce((sum, item) => sum + (item.tip_cents || 0), 0);
+    const fernando = fernandoServices + fernandoTips;
+    const caixinha = data.appointments.reduce((sum, item) => sum + (item.tip_cents || 0), 0);
+    const naoPagou = monthlyServices
+      .filter((item) => item.payment === 'Não pagou')
+      .reduce((sum, item) => sum + Math.round(item.amount_cents * 0.4), 0);
     const drinks = data.beverageSales.reduce(
       (sum, item) => sum + item.quantity * item.unit_price_cents,
       0,
@@ -316,6 +343,8 @@ export default function Home() {
       flavio,
       fernando,
       services: flavio + fernando,
+      caixinha,
+      naoPagou,
       drinks,
       expenses,
       flavioExpenses,
@@ -738,8 +767,24 @@ export default function Home() {
           <Summary
             icon={<Banknote />}
             label="Barbearia · 40% dos dois"
-            value={money.format((totals.services * 0.4) / 100)}
+            value={money.format(((totals.services - totals.caixinha) * 0.4) / 100)}
           />
+          {totals.caixinha > 0 && (
+            <Summary
+              icon={<Banknote />}
+              label="Caixinha"
+              value={money.format(totals.caixinha / 100)}
+              valueClassName="text-amber-600"
+            />
+          )}
+          {totals.naoPagou > 0 && (
+            <Summary
+              icon={<Banknote />}
+              label="Não pagou · 40%"
+              value={money.format(totals.naoPagou / 100)}
+              valueClassName="text-orange-600"
+            />
+          )}
         </section>
 
         {loading ? (
@@ -914,6 +959,7 @@ function Appointments({
     [service, setService] = useState(''),
     [client, setClient] = useState('Cliente'),
     [amount, setAmount] = useState(''),
+    [tip, setTip] = useState(''),
     [customAmount, setCustomAmount] = useState(false),
     [time, setTime] = useState(
       new Date().toLocaleTimeString('pt-BR', {
@@ -947,6 +993,7 @@ function Appointments({
     setService('');
     setClient('Cliente');
     setAmount('');
+    setTip('');
     setCustomAmount(false);
   }
   function edit(item: Appointment) {
@@ -956,6 +1003,7 @@ function Appointments({
     setService(item.service);
     setClient(item.client);
     setAmount(String(item.amount_cents / 100).replace('.', ','));
+    setTip(item.tip_cents ? String(item.tip_cents / 100).replace('.', ',') : '');
     setCustomAmount(Boolean(item.custom_amount));
     setTime(item.time);
   }
@@ -977,6 +1025,7 @@ function Appointments({
       service,
       client,
       amountCents: toCents(amount),
+      tipCents: toCents(tip),
       customAmount,
       time,
     };
@@ -1153,8 +1202,16 @@ function Appointments({
                 required
               />
             </Field>
+            <Field label="Caixinha">
+              <Input
+                inputMode="decimal"
+                value={tip}
+                onChange={(e) => setTip(e.target.value)}
+                placeholder="0"
+              />
+            </Field>
           </div>
-          <Split cents={toCents(amount)} />
+          <Split cents={toCents(amount)} tipCents={toCents(tip)} />
           <Submit loading={submitting}>
             {editingId ? 'Salvar alterações' : 'Adicionar atendimento'}
           </Submit>
@@ -2400,21 +2457,36 @@ function Monthly({
                 <th className="text-right">Fernando</th>
                 <th className="text-right">Bebidas</th>
                 <th className="text-right">Gastos</th>
+                <th className="text-right">Caixinha</th>
+                <th className="text-right">Não pagou</th>
                 <th className="text-right">40% barbearia</th>
               </tr>
             </thead>
             <tbody>
               {days.map((date) => {
+                const dayAppointments = data.appointments.filter((x) => x.date === date);
                 const services = [
-                  ...data.appointments.filter((x) => x.date === date),
+                  ...dayAppointments,
                   ...data.monthlyCuts.filter((x) => x.start_date === date),
                 ];
-                const flavio = services
+                const flavioServices = services
+                  .filter((x) => x.professional === 'Flávio' && x.payment !== 'Não pagou')
+                  .reduce((s, x) => s + x.amount_cents, 0);
+                const flavioTips = dayAppointments
                   .filter((x) => x.professional === 'Flávio')
+                  .reduce((s, x) => s + (x.tip_cents || 0), 0);
+                const flavio = flavioServices + flavioTips;
+                const fernandoServices = services
+                  .filter((x) => x.professional === 'Fernando' && x.payment !== 'Não pagou')
                   .reduce((s, x) => s + x.amount_cents, 0);
-                const fernando = services
+                const fernandoTips = dayAppointments
                   .filter((x) => x.professional === 'Fernando')
-                  .reduce((s, x) => s + x.amount_cents, 0);
+                  .reduce((s, x) => s + (x.tip_cents || 0), 0);
+                const fernando = fernandoServices + fernandoTips;
+                const caixinha = dayAppointments.reduce((s, x) => s + (x.tip_cents || 0), 0);
+                const naoPagou = services
+                  .filter((x) => x.payment === 'Não pagou')
+                  .reduce((s, x) => s + Math.round(x.amount_cents * 0.4), 0);
                 const drinks = data.beverageSales
                   .filter((x) => x.date === date)
                   .reduce((s, x) => s + x.quantity * x.unit_price_cents, 0);
@@ -2432,8 +2504,14 @@ function Monthly({
                     <td className="text-right text-red-700">
                       {money.format(expenses / 100)}
                     </td>
+                    <td className="text-right text-amber-600">
+                      {caixinha > 0 ? money.format(caixinha / 100) : '-'}
+                    </td>
+                    <td className="text-right text-orange-600">
+                      {naoPagou > 0 ? money.format(naoPagou / 100) : '-'}
+                    </td>
                     <td className="text-right font-bold">
-                      {money.format(((flavio + fernando) * 0.4) / 100)}
+                      {money.format(((flavio + fernando - caixinha) * 0.4 + naoPagou) / 100)}
                     </td>
                   </tr>
                 );
@@ -2452,10 +2530,16 @@ function Monthly({
           <BigLine label="Serviços" value={totals.services} />
           <BigLine label="Bebidas" value={totals.drinks} />
           <BigLine label="Gastos" value={totals.expenses} negative />
+          {totals.caixinha > 0 && (
+            <BigLine label="Caixinha" value={totals.caixinha} negative />
+          )}
+          {totals.naoPagou > 0 && (
+            <BigLine label="Não pagou · 40%" value={totals.naoPagou} />
+          )}
           <div className="my-4 h-px bg-white/15" />
           <BigLine
             label="Saldo da barbearia"
-            value={totals.services * 0.4 + totals.drinks - totals.expenses}
+            value={(totals.services - totals.caixinha) * 0.4 + totals.drinks - totals.expenses + totals.naoPagou}
             strong
           />
         </section>
@@ -2485,6 +2569,8 @@ const dayTotals = () => ({
   flavio: 0,
   fernando: 0,
   services: 0,
+  caixinha: 0,
+  naoPagou: 0,
   drinks: 0,
   expenses: 0,
   flavioExpenses: 0,
@@ -2517,11 +2603,13 @@ function Summary({
   label,
   value,
   highlight = false,
+  valueClassName,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
   highlight?: boolean;
+  valueClassName?: string;
 }) {
   return (
     <article
@@ -2533,7 +2621,7 @@ function Summary({
         {icon}
       </span>
       <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-black tracking-tight tabular-nums">
+      <p className={`mt-1 text-2xl font-black tracking-tight tabular-nums ${valueClassName || ''}`}>
         {value}
       </p>
     </article>
@@ -2698,12 +2786,12 @@ function Payment({
     </NativeSelect>
   );
 }
-function Split({ cents }: { cents: number }) {
+function Split({ cents, tipCents = 0 }: { cents: number; tipCents?: number }) {
   return (
     <div className="grid grid-cols-2 gap-3 rounded-xl bg-muted/55 p-3 text-sm">
       <div>
-        <p className="text-xs text-muted-foreground">Profissional · 60%</p>
-        <p className="font-bold">{money.format((cents * 0.6) / 100)}</p>
+        <p className="text-xs text-muted-foreground">Profissional · 60%{tipCents > 0 ? ' + caixinha' : ''}</p>
+        <p className="font-bold">{money.format((cents * 0.6 + tipCents) / 100)}</p>
       </div>
       <div>
         <p className="text-xs text-muted-foreground">Barbearia · 40%</p>
