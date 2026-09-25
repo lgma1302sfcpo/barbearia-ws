@@ -309,6 +309,11 @@ body {
     box-shadow: inset 4px 0 0 #dc2626;
   }
 
+  .professional-table tbody tr.pix-willian {
+    background: #fffbeb;
+    box-shadow: inset 4px 0 0 #f59e0b;
+  }
+
   .professional-table .issue-note {
     color: #b91c1c;
     font-weight: 800;

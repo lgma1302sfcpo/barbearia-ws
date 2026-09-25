@@ -1290,7 +1290,7 @@ function ProfessionalPanel({
             {items.map((item) => (
               <tr
                 key={item.id}
-                className={`${item.id === recentlyAddedId ? 'recently-added' : ''} ${item.payment === 'Dinheiro' ? 'cash-payment' : ''} ${hasPaymentOrPriceIssue(item) || item.custom_amount ? 'payment-issue' : ''}`}
+                className={`${item.id === recentlyAddedId ? 'recently-added' : ''} ${item.payment === 'Dinheiro' ? 'cash-payment' : ''} ${item.payment === 'PIX WILLIAN' ? 'pix-willian' : ''} ${hasPaymentOrPriceIssue(item) || item.custom_amount ? 'payment-issue' : ''}`}
               >
                 <td>
                   <strong>{item.service}</strong>
@@ -1339,7 +1339,7 @@ function ProfessionalPanel({
             {monthlyCuts.map((item) => (
               <tr
                 key={`monthly-${item.id}`}
-                className={`${item.payment === 'Dinheiro' ? 'cash-payment' : ''} ${item.payment === 'Não pagou' || item.amount_cents === 0 ? 'payment-issue' : ''}`}
+                className={`${item.payment === 'Dinheiro' ? 'cash-payment' : ''} ${item.payment === 'PIX WILLIAN' ? 'pix-willian' : ''} ${item.payment === 'Não pagou' || item.amount_cents === 0 ? 'payment-issue' : ''}`}
               >
                 <td>
                   <strong>Corte mensal</strong>
@@ -2782,6 +2782,7 @@ function Payment({
       <NativeSelectOption>Débito</NativeSelectOption>
       <NativeSelectOption>Crédito</NativeSelectOption>
       <NativeSelectOption>Dinheiro</NativeSelectOption>
+      <NativeSelectOption>PIX WILLIAN</NativeSelectOption>
       <NativeSelectOption>Não pagou</NativeSelectOption>
     </NativeSelect>
   );
