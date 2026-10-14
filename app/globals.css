@@ -336,6 +336,12 @@ body {
     font-size: 10px;
     font-weight: 500;
   }
+
+  .professional-table td small.tip-note {
+    @apply text-amber-600;
+    font-size: 10px;
+    font-weight: 500;
+  }
 }
 
 @media (min-width: 1024px) {

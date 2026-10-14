@@ -1242,6 +1242,11 @@ function ProfessionalPanel({
                 <td>
                   <strong>{item.service}</strong>
                   <small>{item.client}</small>
+                  {item.tip_cents > 0 && (
+                    <small className="tip-note">
+                      Caixinha: {money.format(item.tip_cents / 100)}
+                    </small>
+                  )}
                   {item.id === lastAddedId && (
                     <small className="last-added-note">último adicionado*</small>
                   )}
