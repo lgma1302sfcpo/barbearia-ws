@@ -18,7 +18,6 @@ import {
   CircleDollarSign,
   Download,
   LoaderCircle,
-  LockKeyhole,
   LogOut,
   Pencil,
   Plus,
@@ -29,6 +28,7 @@ import {
   WalletCards,
   X,
 } from 'lucide-react';
+import { PinGate } from '@/components/pin-gate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -36,6 +36,7 @@ import {
   NativeSelectOption,
 } from '@/components/ui/native-select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { pixFlavioPaidShare, professionalBalance } from '@/lib/payment-totals';
 
 type Appointment = {
   id: number;
@@ -237,6 +238,11 @@ export default function Home() {
   useEffect(() => {
     if (authenticated) void refresh(false);
   }, [authenticated, refresh]);
+  useEffect(() => {
+    if (authenticated) {
+      void fetch('/api/accesses', { method: 'POST' }).catch(() => {});
+    }
+  }, [authenticated]);
 
   const navigateToSection = useCallback((nextSection: Section) => {
     setSection(nextSection);
@@ -260,6 +266,7 @@ export default function Home() {
   );
   const totals = useMemo(() => {
     const dailyServices = [...dayAppointments, ...dayMonthlyCuts];
+    const flavioPixPaid = pixFlavioPaidShare(dailyServices);
     const flavioServices = dailyServices
       .filter((item) => item.professional === 'Flávio' && item.payment !== 'Não pagou')
       .reduce((sum, item) => sum + item.amount_cents, 0);
@@ -302,11 +309,13 @@ export default function Home() {
       expenses,
       flavioExpenses,
       fernandoExpenses,
+      flavioPixPaid,
     };
   }, [dayAppointments, dayMonthlyCuts, daySales, dayExpenses]);
 
   const monthly = useMemo(() => {
     const monthlyServices = [...data.appointments, ...data.monthlyCuts];
+    const flavioPixPaid = pixFlavioPaidShare(monthlyServices);
     const flavioServices = monthlyServices
       .filter((item) => item.professional === 'Flávio' && item.payment !== 'Não pagou')
       .reduce((sum, item) => sum + item.amount_cents, 0);
@@ -349,6 +358,7 @@ export default function Home() {
       expenses,
       flavioExpenses,
       fernandoExpenses,
+      flavioPixPaid,
     };
   }, [data]);
 
@@ -761,6 +771,7 @@ export default function Home() {
           <ProfessionalSplitSummary
             flavio={totals.flavio}
             fernando={totals.fernando}
+            flavioPixPaid={totals.flavioPixPaid}
             flavioExpenses={totals.flavioExpenses}
             fernandoExpenses={totals.fernandoExpenses}
           />
@@ -828,101 +839,6 @@ export default function Home() {
           <Monthly data={data} totals={monthly} />
         )}
       </div>
-    </main>
-  );
-}
-
-function PinGate({
-  checking,
-  onUnlock,
-}: {
-  checking: boolean;
-  onUnlock: () => void;
-}) {
-  const [pin, setPin] = useState(''),
-    [error, setError] = useState(''),
-    [submitting, setSubmitting] = useState(false);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setError('');
-    setSubmitting(true);
-    try {
-      const response = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ pin }),
-      });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        setError(result.error || 'PIN incorreto.');
-        setPin('');
-        return;
-      }
-      onUnlock();
-    } catch {
-      setError('Não foi possível entrar.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-  return (
-    <main className="grid min-h-screen place-items-center bg-[#172b36] px-4">
-      <section className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#fffdf9] p-7 shadow-2xl">
-        <span className="mb-5 grid size-12 place-items-center rounded-2xl bg-[#f2a24a] text-[#172b36]">
-          <LockKeyhole className="size-6" />
-        </span>
-        <p className="text-xs font-bold uppercase tracking-[.16em] text-[#a45113]">
-          Área protegida
-        </p>
-        <h1 className="mt-1 text-2xl font-black text-[#172b36]">
-          Controle de repasses
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Digite o PIN para abrir o sistema da barbearia.
-        </p>
-        {checking ? (
-          <div className="mt-7 flex items-center gap-2 text-sm text-muted-foreground">
-            <LoaderCircle className="size-4 animate-spin" /> Verificando
-            acesso...
-          </div>
-        ) : (
-          <form onSubmit={submit} className="mt-6 grid gap-3">
-            <Field label="PIN">
-              <Input
-                autoFocus
-                type="password"
-                inputMode="numeric"
-                autoComplete="current-password"
-                maxLength={8}
-                value={pin}
-                onChange={(event) =>
-                  setPin(event.target.value.replace(/\D/g, ''))
-                }
-                placeholder="••••"
-                className="h-12 text-center text-xl font-black tracking-[.45em]"
-                required
-              />
-            </Field>
-            {error && (
-              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {error}
-              </p>
-            )}
-            <Button
-              type="submit"
-              disabled={submitting || pin.length < 4}
-              className="mt-1 h-11 bg-[#f2a24a] font-bold text-[#172b36] hover:bg-[#ffb65f]"
-            >
-              {submitting ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <LockKeyhole />
-              )}{' '}
-              Entrar
-            </Button>
-          </form>
-        )}
-      </section>
     </main>
   );
 }
@@ -1040,6 +956,11 @@ function Appointments({
       setSubmitting(false);
     }
   }
+  const lastAddedId = items.reduce<number | null>(
+    (latestId, item) =>
+      latestId === null || item.id > latestId ? item.id : latestId,
+    null,
+  );
   const flavioItems = items.filter((item) => item.professional === 'Flávio');
   const fernandoItems = items.filter(
     (item) => item.professional === 'Fernando',
@@ -1064,6 +985,8 @@ function Appointments({
             name="Flávio"
             date={selectedDate}
             items={flavioItems}
+            lastAddedId={lastAddedId}
+            paidShare={totals.flavioPixPaid}
             monthlyCuts={flavioMonthlyCuts}
             expenses={flavioExpenses}
             total={totals.flavio}
@@ -1075,6 +998,7 @@ function Appointments({
             name="Fernando"
             date={selectedDate}
             items={fernandoItems}
+            lastAddedId={lastAddedId}
             monthlyCuts={fernandoMonthlyCuts}
             expenses={fernandoExpenses}
             total={totals.fernando}
@@ -1109,22 +1033,35 @@ function Appointments({
               </Button>
             )}
           </div>
-          <Field label="Profissional">
-            <NativeSelect
-              className="w-full"
-              value={professional}
-              onChange={(e) =>
-                setProfessional(e.target.value as '' | 'Flávio' | 'Fernando')
-              }
-              required
-            >
-              <NativeSelectOption value="" disabled>
-                Selecione uma opção
-              </NativeSelectOption>
-              <NativeSelectOption>Flávio</NativeSelectOption>
-              <NativeSelectOption>Fernando</NativeSelectOption>
-            </NativeSelect>
-          </Field>
+          <fieldset className="min-w-0">
+            <legend className="mb-1.5 text-sm font-medium">Profissional</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {(['Flávio', 'Fernando'] as const).map((name) => (
+                <label key={name} className="cursor-pointer">
+                  <input
+                    type="radio"
+                    name="appointment-professional"
+                    value={name}
+                    checked={professional === name}
+                    onChange={() => setProfessional(name)}
+                    className="peer sr-only"
+                    required
+                  />
+                  <span
+                    className={`flex min-h-10 items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition-colors hover:bg-muted peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring ${
+                      professional === name
+                        ? name === 'Flávio'
+                          ? 'border-[#397567] bg-[#e7f3ef] text-[#397567]'
+                          : 'border-[#565b91] bg-[#eeeefa] text-[#565b91]'
+                        : 'border-input bg-background text-muted-foreground'
+                    }`}
+                  >
+                    {name}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
             <Field label="Serviço">
               <NativeSelect
@@ -1212,6 +1149,12 @@ function Appointments({
             </Field>
           </div>
           <Split cents={toCents(amount)} tipCents={toCents(tip)} />
+          {payment === 'PIX FLAVIO' && (
+            <p className="text-xs text-muted-foreground">
+              PIX FLAVIO: {money.format(toCents(amount) * 0.6 / 100)} dos 60%
+              já pagos e descontados do repasse de Flávio.
+            </p>
+          )}
           <Submit loading={submitting}>
             {editingId ? 'Salvar alterações' : 'Adicionar atendimento'}
           </Submit>
@@ -1232,6 +1175,8 @@ function ProfessionalPanel({
   remove,
   edit,
   recentlyAddedId,
+  lastAddedId,
+  paidShare = 0,
 }: {
   name: 'Flávio' | 'Fernando';
   date: string;
@@ -1242,6 +1187,8 @@ function ProfessionalPanel({
   remove: (entity: string, id: number) => Promise<void>;
   edit: (item: Appointment) => void;
   recentlyAddedId: number | null;
+  lastAddedId: number | null;
+  paidShare?: number;
 }) {
   const flavio = name === 'Flávio';
   const expensesTotal = expenses.reduce(
@@ -1295,6 +1242,9 @@ function ProfessionalPanel({
                 <td>
                   <strong>{item.service}</strong>
                   <small>{item.client}</small>
+                  {item.id === lastAddedId && (
+                    <small className="last-added-note">último adicionado*</small>
+                  )}
                   {expectedServicePrice(item.service) !== null &&
                     item.amount_cents !==
                       expectedServicePrice(item.service) && (
@@ -1370,11 +1320,11 @@ function ProfessionalPanel({
       ) : (
         <Empty text={`Nenhum atendimento de ${name} neste dia.`} />
       )}
-      {expenses.length > 0 && (
+      {(expenses.length > 0 || paidShare > 0) && (
         <div className="border-t px-4 py-3">
-          <p className="text-xs font-bold uppercase tracking-[.14em] text-red-600">
+          {expenses.length > 0 && <p className="text-xs font-bold uppercase tracking-[.14em] text-red-600">
             Gastos descontados de {name}
-          </p>
+          </p>}
           <ul className="mt-2 space-y-1">
             {expenses.map((item) => (
               <li
@@ -1388,10 +1338,16 @@ function ProfessionalPanel({
               </li>
             ))}
           </ul>
+          {paidShare > 0 && (
+            <p className="mt-2 flex justify-between gap-2 text-xs text-muted-foreground">
+              <span>PIX FLAVIO · 60% já pagos</span>
+              <span>-{money.format(paidShare / 100)}</span>
+            </p>
+          )}
           <div className="mt-2 flex items-center justify-between border-t pt-2 text-xs font-bold">
             <span>Repasse líquido (60%)</span>
             <span>
-              {money.format((total * 0.6 - expensesTotal) / 100)}
+              {money.format(professionalBalance(total, expensesTotal, paidShare) / 100)}
             </span>
           </div>
         </div>
@@ -1529,7 +1485,7 @@ function MonthlyCuts({
         />
         <MonthlyMetric
           label="Flávio · 60%"
-          value={money.format((flavioReceived * 0.6) / 100)}
+          value={money.format(professionalBalance(flavioReceived, 0, pixFlavioPaidShare(items)) / 100)}
         />
         <MonthlyMetric
           label="Fernando · 60%"
@@ -2552,6 +2508,7 @@ function Monthly({
             name="Flávio"
             total={totals.flavio}
             expenses={totals.flavioExpenses}
+            paidShare={totals.flavioPixPaid}
           />
           <div className="my-4 h-px bg-border" />
           <PersonSummary
@@ -2575,6 +2532,7 @@ const dayTotals = () => ({
   expenses: 0,
   flavioExpenses: 0,
   fernandoExpenses: 0,
+  flavioPixPaid: 0,
 });
 const monthTotals = dayTotals;
 function Nav({
@@ -2632,11 +2590,13 @@ function ProfessionalSplitSummary({
   fernando,
   flavioExpenses = 0,
   fernandoExpenses = 0,
+  flavioPixPaid = 0,
 }: {
   flavio: number;
   fernando: number;
   flavioExpenses?: number;
   fernandoExpenses?: number;
+  flavioPixPaid?: number;
 }) {
   return (
     <article className="rounded-2xl border bg-card p-5 shadow-sm">
@@ -2648,11 +2608,16 @@ function ProfessionalSplitSummary({
         <div>
           <p className="text-xs font-semibold text-[#397567]">Flávio</p>
           <p className="text-lg font-black tabular-nums">
-            {money.format((flavio * 0.6 - flavioExpenses) / 100)}
+            {money.format(professionalBalance(flavio, flavioExpenses, flavioPixPaid) / 100)}
           </p>
           {flavioExpenses > 0 && (
             <p className="text-xs text-red-600">
               -{money.format(flavioExpenses / 100)} em gastos
+            </p>
+          )}
+          {flavioPixPaid > 0 && (
+            <p className="text-xs text-muted-foreground">
+              -{money.format(flavioPixPaid / 100)} já pagos via PIX FLAVIO
             </p>
           )}
         </div>
@@ -2783,6 +2748,7 @@ function Payment({
       <NativeSelectOption>Crédito</NativeSelectOption>
       <NativeSelectOption>Dinheiro</NativeSelectOption>
       <NativeSelectOption>PIX WILLIAN</NativeSelectOption>
+      <NativeSelectOption>PIX FLAVIO</NativeSelectOption>
       <NativeSelectOption>Não pagou</NativeSelectOption>
     </NativeSelect>
   );
@@ -2875,6 +2841,7 @@ function ProfessionalCard({
             name="Flávio"
             total={daily.flavio}
             expenses={daily.flavioExpenses}
+            paidShare={daily.flavioPixPaid}
           />
         </div>
         <div className="rounded-xl bg-white/7 p-4">
@@ -2896,12 +2863,14 @@ function PersonSummary({
   name,
   total,
   expenses = 0,
+  paidShare = 0,
 }: {
   name: string;
   total: number;
   expenses?: number;
+  paidShare?: number;
 }) {
-  const share = total * 0.6 - expenses;
+  const share = professionalBalance(total, expenses, paidShare);
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -2914,11 +2883,17 @@ function PersonSummary({
         <span>60%: {money.format((total * 0.6) / 100)}</span>
         <span>40%: {money.format((total * 0.4) / 100)}</span>
       </div>
-      {expenses > 0 && (
+      {paidShare > 0 && (
         <div className="mt-2 flex justify-between gap-2 text-xs">
-          <span className="text-red-600">
+          <span>PIX FLAVIO · 60% já pagos</span>
+          <span>-{money.format(paidShare / 100)}</span>
+        </div>
+      )}
+      {(expenses > 0 || paidShare > 0) && (
+        <div className="mt-2 flex justify-between gap-2 text-xs">
+          {expenses > 0 && <span className="text-red-600">
             Gastos dele: -{money.format(expenses / 100)}
-          </span>
+          </span>}
           <span className="font-bold">
             Repasse líquido: {money.format(share / 100)}
           </span>

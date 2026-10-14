@@ -331,6 +331,11 @@ body {
   .recently-added {
     animation: recently-added 3s ease-out;
   }
+
+  .professional-table td small.last-added-note {
+    font-size: 10px;
+    font-weight: 500;
+  }
 }
 
 @media (min-width: 1024px) {
