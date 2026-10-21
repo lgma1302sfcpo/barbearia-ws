@@ -61,8 +61,12 @@ export default function AccessHistory() {
         return refresh();
       })
       .catch(() => void refresh());
-    const interval = window.setInterval(() => void refresh(), 30_000);
-    return () => window.clearInterval(interval);
+    // sem polling: uma aba esquecida aberta mantinha o banco Neon acordado o dia todo
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [authenticated, refresh]);
 
   if (!authenticated) {
