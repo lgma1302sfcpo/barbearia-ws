@@ -4,14 +4,67 @@ import { useCallback, useEffect, useState } from 'react';
 import { LoaderCircle, MonitorSmartphone, RefreshCw } from 'lucide-react';
 import { PinGate } from '@/components/pin-gate';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 type Visitor = {
   id: string;
+  label: string | null;
   device: string;
   browser: string;
+  model: string | null;
+  screen: string | null;
+  location: string | null;
+  ip: string | null;
   first_access: string;
   last_access: string;
 };
+
+type UserAgentData = {
+  getHighEntropyValues(hints: string[]): Promise<{ model?: string; platformVersion?: string }>;
+};
+
+// o modelo e a versão real do sistema só vêm pelas Client Hints (Chrome/Edge); o Safari não informa
+async function deviceHints() {
+  const uaData = (navigator as Navigator & { userAgentData?: UserAgentData }).userAgentData;
+  const values = await uaData?.getHighEntropyValues(['model', 'platformVersion']).catch(() => undefined);
+  return { screen: `${screen.width}x${screen.height}`, model: values?.model, platformVersion: values?.platformVersion };
+}
+
+function LabelInput({ visitor, onSaved }: { visitor: Visitor; onSaved: () => void }) {
+  const [value, setValue] = useState(visitor.label ?? '');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (value.trim() === (visitor.label ?? '')) return;
+    setSaving(true);
+    try {
+      const response = await fetch('/api/accesses', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: visitor.id, label: value }),
+      });
+      if (response.ok) onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Input
+      value={value}
+      maxLength={60}
+      disabled={saving}
+      placeholder={`Visitante ${visitor.id.slice(0, 8)}`}
+      aria-label="Nome deste dispositivo"
+      className="h-8 min-w-40 font-semibold"
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={() => void save()}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur();
+      }}
+    />
+  );
+}
 
 const dateTime = new Intl.DateTimeFormat('pt-BR', {
   dateStyle: 'short', timeStyle: 'medium', timeZone: 'America/Sao_Paulo',
@@ -55,7 +108,12 @@ export default function AccessHistory() {
 
   useEffect(() => {
     if (!authenticated) return;
-    void fetch('/api/accesses', { method: 'POST' })
+    void deviceHints()
+      .then((hints) => fetch('/api/accesses', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(hints),
+      }))
       .then((response) => {
         if (!response.ok) throw new Error('Não foi possível registrar este acesso.');
         return refresh();
@@ -83,7 +141,7 @@ export default function AccessHistory() {
             </p>
             <h1 className="mt-1 text-2xl font-black">Últimos acessos</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Última entrada de cada navegador/dispositivo. Atualiza a cada 30 segundos.
+              Última entrada de cada navegador/dispositivo. Dê um nome a cada um para saber quem é quem.
             </p>
           </div>
           <Button variant="outline" disabled={loading} onClick={() => void refresh()}>
@@ -94,6 +152,8 @@ export default function AccessHistory() {
         <p className="text-sm text-muted-foreground">
           Os horários seguem o fuso de São Paulo. O dispositivo é identificado pelo navegador;
           navegadores diferentes no mesmo aparelho aparecem separados. Limpar os cookies gera uma nova identificação.
+          O modelo do iPhone é estimado pelo tamanho da tela e a cidade é aproximada pelo IP (em dados móveis pode
+          aparecer a cidade da operadora).
         </p>
         {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
         <section aria-label="Histórico de acessos" className="overflow-hidden rounded-2xl border bg-card shadow-sm">
@@ -104,6 +164,7 @@ export default function AccessHistory() {
                   <th scope="col" className="px-4 py-3">Visitante</th>
                   <th scope="col" className="px-4 py-3">Dispositivo</th>
                   <th scope="col" className="px-4 py-3">Navegador</th>
+                  <th scope="col" className="px-4 py-3">Local</th>
                   <th scope="col" className="px-4 py-3">Último acesso</th>
                   <th scope="col" className="px-4 py-3">Primeiro acesso</th>
                 </tr>
@@ -111,20 +172,30 @@ export default function AccessHistory() {
               <tbody className="divide-y">
                 {visitors.map((visitor) => (
                   <tr key={visitor.id}>
-                    <td className="whitespace-nowrap px-4 py-4 font-semibold">
-                      Visitante {visitor.id.slice(0, 8)}
-                      {visitor.id === currentVisitorId && (
-                        <span className="mt-1 block text-xs font-normal text-muted-foreground">Este navegador</span>
+                    <td className="px-4 py-4">
+                      <LabelInput key={visitor.label ?? ''} visitor={visitor} onSaved={() => void refresh()} />
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {visitor.id === currentVisitorId ? 'Este navegador · ' : ''}ID {visitor.id.slice(0, 8)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className="whitespace-nowrap">{visitor.device}</span>
+                      {visitor.model && <span className="block text-xs text-muted-foreground">{visitor.model}</span>}
+                      {visitor.screen && (
+                        <span className="block text-xs text-muted-foreground">Tela {visitor.screen.replace('x', '×')}</span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-4">{visitor.device}</td>
                     <td className="px-4 py-4">{visitor.browser}</td>
+                    <td className="px-4 py-4">
+                      {visitor.location ?? '—'}
+                      {visitor.ip && <span className="block text-xs text-muted-foreground">IP {visitor.ip}</span>}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-4 font-semibold">{dateTime.format(new Date(visitor.last_access))}</td>
                     <td className="whitespace-nowrap px-4 py-4 text-muted-foreground">{dateTime.format(new Date(visitor.first_access))}</td>
                   </tr>
                 ))}
                 {!visitors.length && (
-                  <tr><td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                  <tr><td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                     {loading ? 'Carregando acessos…' : error ? 'Histórico indisponível.' : 'Nenhum acesso registrado ainda.'}
                   </td></tr>
                 )}
