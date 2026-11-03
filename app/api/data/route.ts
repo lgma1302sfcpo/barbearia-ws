@@ -60,6 +60,9 @@ export async function POST(request: Request) {
     const amountCents = positiveInt(body.amountCents);
     const tipCents = positiveInt(body.tipCents);
     const customAmount = body.customAmount === true;
+    const distribution = service === 'Outro' && body.distribution === 'shop'
+      ? body.distribution
+      : 'split';
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
       !['Flávio', 'Fernando'].includes(professional) ||
@@ -76,9 +79,9 @@ export async function POST(request: Request) {
       );
     }
     const rows = await sql`INSERT INTO appointments
-      (date, professional, payment, service, client, amount_cents, tip_cents, custom_amount, time, created_at)
+      (date, professional, payment, service, client, amount_cents, tip_cents, custom_amount, distribution, time, created_at)
       VALUES (${date}, ${professional}, ${payment}, ${service},
-        ${clean(body.client) || 'Cliente'}, ${amountCents}, ${tipCents}, ${customAmount}, ${clean(body.time, 5) || '00:00'}, ${now})
+        ${clean(body.client) || 'Cliente'}, ${amountCents}, ${tipCents}, ${customAmount}, ${distribution}, ${clean(body.time, 5) || '00:00'}, ${now})
       RETURNING id`;
     return json({ id: rows[0].id }, 201);
   }
@@ -333,6 +336,9 @@ export async function PATCH(request: Request) {
   const amountCents = positiveInt(body.amountCents);
   const tipCents = positiveInt(body.tipCents);
   const customAmount = body.customAmount === true;
+  const distribution = service === 'Outro' && body.distribution === 'shop'
+      ? body.distribution
+      : 'split';
   if (
     !id ||
     !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
@@ -352,7 +358,7 @@ export async function PATCH(request: Request) {
   const rows = await sql`UPDATE appointments SET
       date = ${date}, professional = ${professional}, payment = ${payment},
       service = ${service}, client = ${clean(body.client) || 'Cliente'}, amount_cents = ${amountCents},
-      tip_cents = ${tipCents}, custom_amount = ${customAmount},
+      tip_cents = ${tipCents}, custom_amount = ${customAmount}, distribution = ${distribution},
       time = ${clean(body.time, 5) || '00:00'}
     WHERE id = ${id} RETURNING id`;
   if (!rows.length) return json({ error: 'Atendimento não encontrado.' }, 404);
