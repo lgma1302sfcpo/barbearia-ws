@@ -2917,8 +2917,8 @@ function ProfessionalCard({
         </div>
       </div>
       <div className="mt-4 grid gap-2 rounded-xl border border-white/10 p-3 text-xs text-white/65 sm:grid-cols-2">
-        <span>Flávio no mês: {money.format(monthly.flavio / 100)}</span>
-        <span>Fernando no mês: {money.format(monthly.fernando / 100)}</span>
+        <span>Flávio no mês: {money.format(professionalBalance(monthly.flavio, 0, 0, monthly.flavioAdjustment) / 100)}</span>
+        <span>Fernando no mês: {money.format(professionalBalance(monthly.fernando, 0, 0, monthly.fernandoAdjustment) / 100)}</span>
       </div>
     </section>
   );
