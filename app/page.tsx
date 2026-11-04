@@ -109,6 +109,13 @@ const sectionFromUrl = () => {
   return isSection(requestedSection) ? requestedSection : 'atendimentos';
 };
 
+function currentTime() {
+  return new Date().toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -891,12 +898,8 @@ function Appointments({
     [amount, setAmount] = useState(''),
     [tip, setTip] = useState(''),
     [customAmount, setCustomAmount] = useState(false),
-    [time, setTime] = useState(
-      new Date().toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    ),
+    [time, setTime] = useState(currentTime),
+    [timeTouched, setTimeTouched] = useState(false),
     [editingId, setEditingId] = useState<number | null>(null),
     [submitting, setSubmitting] = useState(false);
   useEffect(() => {
@@ -926,6 +929,8 @@ function Appointments({
     setAmount('');
     setTip('');
     setCustomAmount(false);
+    setTime(currentTime());
+    setTimeTouched(false);
   }
   function edit(item: Appointment) {
     setEditingId(item.id);
@@ -938,6 +943,7 @@ function Appointments({
     setTip(item.tip_cents ? String(item.tip_cents / 100).replace('.', ',') : '');
     setCustomAmount(Boolean(item.custom_amount));
     setTime(item.time);
+    setTimeTouched(true);
   }
   function selectService(value: string) {
     setService(value);
@@ -961,7 +967,7 @@ function Appointments({
       tipCents: toCents(tip),
       customAmount,
       distribution: service === 'Outro' ? distribution : 'split',
-      time,
+      time: timeTouched ? time : currentTime(),
     };
     try {
       const saved = await save(
@@ -1134,7 +1140,10 @@ function Appointments({
               <Input
                 type="time"
                 value={time}
-                onChange={(e) => setTime(e.target.value)}
+                onChange={(e) => {
+                  setTime(e.target.value);
+                  setTimeTouched(true);
+                }}
                 required
               />
             </Field>
@@ -1425,12 +1434,8 @@ function MonthlyCuts({
     [cutsUsed, setCutsUsed] = useState('1'),
     [startDate, setStartDate] = useState(selectedDate),
     [lastCutDate, setLastCutDate] = useState(selectedDate),
-    [time, setTime] = useState(
-      new Date().toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    ),
+    [time, setTime] = useState(currentTime),
+    [timeTouched, setTimeTouched] = useState(false),
     [editingId, setEditingId] = useState<number | null>(null),
     [submitting, setSubmitting] = useState(false);
 
@@ -1459,6 +1464,8 @@ function MonthlyCuts({
     setCutsUsed('1');
     setStartDate(selectedDate);
     setLastCutDate(selectedDate);
+    setTime(currentTime());
+    setTimeTouched(false);
   }
 
   function edit(item: MonthlyCut) {
@@ -1472,6 +1479,7 @@ function MonthlyCuts({
     setStartDate(item.start_date);
     setLastCutDate(item.last_cut_date);
     setTime(item.time);
+    setTimeTouched(true);
     document.getElementById('monthly-cut-form')?.scrollIntoView({
       behavior: 'smooth',
       block: 'start',
@@ -1506,7 +1514,7 @@ function MonthlyCuts({
           cutsUsed: Number(form.get('cutsUsed') ?? cutsUsed),
           startDate: submittedStartDate,
           lastCutDate,
-          time: String(form.get('time') || time),
+          time: timeTouched ? String(form.get('time') || time) : currentTime(),
         },
         editingId ? 'Plano mensal atualizado.' : 'Plano mensal adicionado.',
         editingId ? 'PATCH' : 'POST',
@@ -1761,7 +1769,10 @@ function MonthlyCuts({
                 name="time"
                 type="time"
                 value={time}
-                onChange={(event) => setTime(event.target.value)}
+                onChange={(event) => {
+                  setTime(event.target.value);
+                  setTimeTouched(true);
+                }}
                 required
               />
             </Field>
