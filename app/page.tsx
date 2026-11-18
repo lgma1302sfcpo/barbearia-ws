@@ -36,7 +36,15 @@ import {
   NativeSelectOption,
 } from '@/components/ui/native-select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { distributionAdjustment, unpaidShopShare, pixFlavioPaidShare, professionalBalance } from '@/lib/payment-totals';
+import {
+  distributionAdjustment,
+  unpaidShopShare,
+  pixFlavioPaidShare,
+  professionalBalance,
+  professionalShare,
+  shopServiceShare,
+  buildDailySummary,
+} from '@/lib/payment-totals';
 
 type Appointment = {
   id: number;
@@ -323,6 +331,8 @@ export default function Home() {
       flavioPixPaid,
       flavioAdjustment,
       fernandoAdjustment,
+      flavioTips,
+      fernandoTips,
     };
   }, [dayAppointments, dayMonthlyCuts, daySales, dayExpenses]);
 
@@ -376,6 +386,8 @@ export default function Home() {
       flavioPixPaid,
       flavioAdjustment,
       fernandoAdjustment,
+      flavioTips,
+      fernandoTips,
     };
   }, [data]);
 
@@ -794,11 +806,13 @@ export default function Home() {
             flavioPixPaid={totals.flavioPixPaid}
             flavioExpenses={totals.flavioExpenses}
             fernandoExpenses={totals.fernandoExpenses}
+            flavioTips={totals.flavioTips}
+            fernandoTips={totals.fernandoTips}
           />
           <Summary
             icon={<Banknote />}
             label="Parte da barbearia"
-            value={money.format(((totals.services - totals.caixinha) * 0.4 - totals.flavioAdjustment - totals.fernandoAdjustment) / 100)}
+            value={money.format(shopServiceShare(totals.services - totals.caixinha, totals.flavioAdjustment + totals.fernandoAdjustment) / 100)}
           />
           {totals.caixinha > 0 && (
             <Summary
@@ -811,12 +825,22 @@ export default function Home() {
           {totals.naoPagou > 0 && (
             <Summary
               icon={<Banknote />}
-              label="Não pagou · parte da barbearia"
+              label="Não pagou · a compensar no repasse"
               value={money.format(totals.naoPagou / 100)}
               valueClassName="text-orange-600"
             />
           )}
         </section>
+
+        {!loading && (
+          <DailySummary
+            date={selectedDate}
+            appointments={dayAppointments}
+            monthlyCuts={dayMonthlyCuts}
+            expenses={dayExpenses}
+            sales={daySales}
+          />
+        )}
 
         {loading ? (
           <DashboardSkeleton />
@@ -1015,6 +1039,7 @@ function Appointments({
             expenses={flavioExpenses}
             total={totals.flavio}
             adjustment={totals.flavioAdjustment}
+            tips={totals.flavioTips}
             remove={remove}
             edit={edit}
             recentlyAddedId={recentlyAddedId}
@@ -1028,6 +1053,7 @@ function Appointments({
             expenses={fernandoExpenses}
             total={totals.fernando}
             adjustment={totals.fernandoAdjustment}
+            tips={totals.fernandoTips}
             remove={remove}
             edit={edit}
             recentlyAddedId={recentlyAddedId}
@@ -1135,6 +1161,11 @@ function Appointments({
           <div className="grid grid-cols-2 gap-2.5">
             <Field label="Pagamento">
               <Payment value={payment} onChange={setPayment} />
+              {payment === 'Misto' && (
+                <span className="font-normal text-muted-foreground">
+                  Pagamento dividido entre dinheiro, PIX, débito ou crédito.
+                </span>
+              )}
             </Field>
             <Field label="Horário">
               <Input
@@ -1191,7 +1222,13 @@ function Appointments({
               />
             </Field>
           </div>
-          <Split cents={toCents(amount)} tipCents={toCents(tip)} distribution={distribution} />
+          <Split cents={toCents(amount)} tipCents={toCents(tip)} distribution={distribution} payment={payment} />
+          {payment === 'Não pagou' && (
+            <p className="text-xs text-orange-700">
+              A parte da barbearia será descontada do repasse do profissional,
+              mesmo que o saldo fique negativo.
+            </p>
+          )}
           {payment === 'PIX FLAVIO' && (
             <p className="text-xs text-muted-foreground">
               PIX FLAVIO: {money.format(toCents(amount) * (distribution === 'shop' ? 0 : 0.6) / 100)} do profissional
@@ -1221,6 +1258,7 @@ function ProfessionalPanel({
   lastAddedId,
   paidShare = 0,
   adjustment = 0,
+  tips = 0,
 }: {
   name: 'Flávio' | 'Fernando';
   date: string;
@@ -1234,6 +1272,7 @@ function ProfessionalPanel({
   lastAddedId: number | null;
   paidShare?: number;
   adjustment?: number;
+  tips?: number;
 }) {
   const flavio = name === 'Flávio';
   const expensesTotal = expenses.reduce(
@@ -1288,6 +1327,11 @@ function ProfessionalPanel({
                   <strong>{item.service}</strong>
                   {item.service === 'Outro' && <small>{item.distribution === 'shop' ? 'Sem distribuição · 100% barbearia' : 'Com distribuição · 60% / 40%'}</small>}
                   <small>{item.client}</small>
+                  {item.payment === 'Não pagou' && (
+                    <small className="issue-note">
+                      Desconto no repasse: -{money.format(unpaidShopShare(item) / 100)}
+                    </small>
+                  )}
                   {item.tip_cents > 0 && (
                     <small className="tip-note">
                       Caixinha: {money.format(item.tip_cents / 100)}
@@ -1345,6 +1389,11 @@ function ProfessionalPanel({
                 <td>
                   <strong>Corte mensal</strong>
                   <small>{item.client}</small>
+                  {item.payment === 'Não pagou' && (
+                    <small className="issue-note">
+                      Desconto no repasse: -{money.format(unpaidShopShare(item) / 100)}
+                    </small>
+                  )}
                   <small>
                     Plano com {item.cuts_total}{' '}
                     {item.cuts_total === 1 ? 'corte' : 'cortes'}
@@ -1371,7 +1420,7 @@ function ProfessionalPanel({
       ) : (
         <Empty text={`Nenhum atendimento de ${name} neste dia.`} />
       )}
-      {(expenses.length > 0 || paidShare > 0) && (
+      {(expenses.length > 0 || paidShare > 0 || adjustment !== 0) && (
         <div className="border-t px-4 py-3">
           {expenses.length > 0 && <p className="text-xs font-bold uppercase tracking-[.14em] text-red-600">
             Gastos descontados de {name}
@@ -1398,7 +1447,7 @@ function ProfessionalPanel({
           <div className="mt-2 flex items-center justify-between border-t pt-2 text-xs font-bold">
             <span>Repasse líquido</span>
             <span>
-              {money.format(professionalBalance(total, expensesTotal, paidShare, adjustment) / 100)}
+              {money.format(professionalBalance(total, expensesTotal, paidShare, adjustment, tips) / 100)}
             </span>
           </div>
         </div>
@@ -1535,15 +1584,15 @@ function MonthlyCuts({
         />
         <MonthlyMetric
           label="Flávio · 60%"
-          value={money.format(professionalBalance(flavioReceived, 0, pixFlavioPaidShare(items)) / 100)}
+          value={money.format(professionalBalance(flavioReceived, 0, pixFlavioPaidShare(items), distributionAdjustment(items.filter((item) => item.professional === 'Flávio'))) / 100)}
         />
         <MonthlyMetric
           label="Fernando · 60%"
-          value={money.format((fernandoReceived * 0.6) / 100)}
+          value={money.format(professionalBalance(fernandoReceived, 0, 0, distributionAdjustment(items.filter((item) => item.professional === 'Fernando'))) / 100)}
         />
         <MonthlyMetric
           label="Barbearia · 40%"
-          value={money.format((received * 0.4) / 100)}
+          value={money.format(shopServiceShare(received, distributionAdjustment(items)) / 100)}
         />
       </section>
 
@@ -2467,7 +2516,7 @@ function Monthly({
                 <th className="text-right">Bebidas</th>
                 <th className="text-right">Gastos</th>
                 <th className="text-right">Caixinha</th>
-                <th className="text-right">Não pagou</th>
+                <th className="text-right">A compensar no repasse</th>
                 <th className="text-right">Parte da barbearia</th>
               </tr>
             </thead>
@@ -2520,7 +2569,7 @@ function Monthly({
                       {naoPagou > 0 ? money.format(naoPagou / 100) : '-'}
                     </td>
                     <td className="text-right font-bold">
-                      {money.format(((flavio + fernando - caixinha) * 0.4 - distributionAdjustment(services) + naoPagou) / 100)}
+                      {money.format(shopServiceShare(flavio + fernando - caixinha, distributionAdjustment(services)) / 100)}
                     </td>
                   </tr>
                 );
@@ -2543,12 +2592,12 @@ function Monthly({
             <BigLine label="Caixinha" value={totals.caixinha} negative />
           )}
           {totals.naoPagou > 0 && (
-            <BigLine label="Não pagou · parte da barbearia" value={totals.naoPagou} />
+            <BigLine label="Não pagou · a compensar no repasse" value={totals.naoPagou} />
           )}
           <div className="my-4 h-px bg-white/15" />
           <BigLine
             label="Saldo da barbearia"
-            value={(totals.services - totals.caixinha) * 0.4 - totals.flavioAdjustment - totals.fernandoAdjustment + totals.drinks - totals.expenses + totals.naoPagou}
+            value={shopServiceShare(totals.services - totals.caixinha, totals.flavioAdjustment + totals.fernandoAdjustment) + totals.drinks - totals.expenses}
             strong
           />
         </section>
@@ -2561,6 +2610,7 @@ function Monthly({
             name="Flávio"
             total={totals.flavio}
             adjustment={totals.flavioAdjustment}
+            tips={totals.flavioTips}
             expenses={totals.flavioExpenses}
             paidShare={totals.flavioPixPaid}
           />
@@ -2569,6 +2619,7 @@ function Monthly({
             name="Fernando"
             total={totals.fernando}
             adjustment={totals.fernandoAdjustment}
+            tips={totals.fernandoTips}
             expenses={totals.fernandoExpenses}
           />
         </section>
@@ -2590,6 +2641,8 @@ const dayTotals = () => ({
   flavioPixPaid: 0,
   flavioAdjustment: 0,
   fernandoAdjustment: 0,
+  flavioTips: 0,
+  fernandoTips: 0,
 });
 const monthTotals = dayTotals;
 function Nav({
@@ -2650,6 +2703,8 @@ function ProfessionalSplitSummary({
   flavioPixPaid = 0,
   flavioAdjustment = 0,
   fernandoAdjustment = 0,
+  flavioTips = 0,
+  fernandoTips = 0,
 }: {
   flavio: number;
   fernando: number;
@@ -2658,6 +2713,8 @@ function ProfessionalSplitSummary({
   flavioPixPaid?: number;
   flavioAdjustment?: number;
   fernandoAdjustment?: number;
+  flavioTips?: number;
+  fernandoTips?: number;
 }) {
   return (
     <article className="rounded-2xl border bg-card p-5 shadow-sm">
@@ -2669,7 +2726,7 @@ function ProfessionalSplitSummary({
         <div>
           <p className="text-xs font-semibold text-[#397567]">Flávio</p>
           <p className="text-lg font-black tabular-nums">
-            {money.format(professionalBalance(flavio, flavioExpenses, flavioPixPaid, flavioAdjustment) / 100)}
+            {money.format(professionalBalance(flavio, flavioExpenses, flavioPixPaid, flavioAdjustment, flavioTips) / 100)}
           </p>
           {flavioExpenses > 0 && (
             <p className="text-xs text-red-600">
@@ -2685,7 +2742,7 @@ function ProfessionalSplitSummary({
         <div>
           <p className="text-xs font-semibold text-[#565b91]">Fernando</p>
           <p className="text-lg font-black tabular-nums">
-            {money.format((fernando * 0.6 + fernandoAdjustment - fernandoExpenses) / 100)}
+            {money.format(professionalBalance(fernando, fernandoExpenses, 0, fernandoAdjustment, fernandoTips) / 100)}
           </p>
           {fernandoExpenses > 0 && (
             <p className="text-xs text-red-600">
@@ -2784,6 +2841,67 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
     </label>
   );
 }
+function DailySummary({
+  date,
+  appointments,
+  monthlyCuts,
+  expenses,
+  sales,
+}: {
+  date: string;
+  appointments: Appointment[];
+  monthlyCuts: MonthlyCut[];
+  expenses: Expense[];
+  sales: BeverageSale[];
+}) {
+  const entries = buildDailySummary({ appointments, monthlyCuts, expenses, sales });
+  const tones = {
+    note: 'border-border/60 bg-muted/35 text-foreground',
+    tip: 'border-emerald-200 bg-emerald-50 text-emerald-950',
+    warning: 'border-orange-200 bg-orange-50 text-orange-950',
+  };
+  return (
+    <section
+      className="mb-6 rounded-2xl border bg-card p-4 shadow-sm sm:p-5"
+      aria-labelledby="daily-summary-title"
+    >
+      <div className="mb-4 flex items-center gap-3">
+        <span
+          className="grid size-9 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground"
+          aria-hidden="true"
+        >
+          <ReceiptText className="size-4" />
+        </span>
+        <div>
+          <h2 id="daily-summary-title" className="font-bold">
+            Resumo do dia · {displayDate(date)}
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Caixinhas, pagamentos e movimentações desta data.
+          </p>
+        </div>
+      </div>
+      {entries.length > 0 ? (
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {entries.map((entry) => (
+            <li
+              key={entry.key}
+              className={`flex items-start gap-2.5 rounded-xl border p-3 text-sm leading-relaxed ${tones[entry.tone]}`}
+            >
+              <span
+                className="mt-2 size-1.5 shrink-0 rounded-full bg-current opacity-60"
+                aria-hidden="true"
+              />
+              <span>{entry.text}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">Nenhuma movimentação registrada neste dia.</p>
+      )}
+    </section>
+  );
+}
 function Payment({
   value,
   onChange,
@@ -2810,21 +2928,25 @@ function Payment({
       <NativeSelectOption>Dinheiro</NativeSelectOption>
       <NativeSelectOption>PIX WILLIAN</NativeSelectOption>
       <NativeSelectOption>PIX FLAVIO</NativeSelectOption>
+      <NativeSelectOption>Misto</NativeSelectOption>
       <NativeSelectOption>Não pagou</NativeSelectOption>
     </NativeSelect>
   );
 }
-function Split({ cents, tipCents = 0, distribution = 'split' }: { cents: number; tipCents?: number; distribution?: string }) {
+function Split({ cents, tipCents = 0, distribution = 'split', payment = '' }: { cents: number; tipCents?: number; distribution?: string; payment?: string }) {
   const rate = distribution === 'shop' ? 0 : 0.6;
+  const item = { amount_cents: cents, distribution, payment };
+  const unpaid = payment === 'Não pagou';
+  const share = unpaid ? -unpaidShopShare(item) : professionalShare(item);
   return (
     <div className="grid grid-cols-2 gap-3 rounded-xl bg-muted/55 p-3 text-sm">
       <div>
-        <p className="text-xs text-muted-foreground">Profissional · {rate * 100}%{tipCents > 0 ? ' + caixinha' : ''}</p>
-        <p className="font-bold">{money.format((cents * rate + tipCents) / 100)}</p>
+        <p className="text-xs text-muted-foreground">Profissional · {unpaid ? 'desconto' : `${rate * 100}%`}{tipCents > 0 ? ' + caixinha' : ''}</p>
+        <p className={`font-bold ${unpaid ? 'text-red-600' : ''}`}>{money.format((share + tipCents) / 100)}</p>
       </div>
       <div>
-        <p className="text-xs text-muted-foreground">Barbearia · {Math.round((1 - rate) * 100)}%</p>
-        <p className="font-bold">{money.format((cents * (1 - rate)) / 100)}</p>
+        <p className="text-xs text-muted-foreground">Barbearia · {unpaid ? 'a compensar' : `${Math.round((1 - rate) * 100)}%`}</p>
+        <p className="font-bold">{money.format(unpaidShopShare(item) / 100)}</p>
       </div>
     </div>
   );
@@ -2903,6 +3025,7 @@ function ProfessionalCard({
             name="Flávio"
             total={daily.flavio}
             adjustment={daily.flavioAdjustment}
+            tips={daily.flavioTips}
             expenses={daily.flavioExpenses}
             paidShare={daily.flavioPixPaid}
           />
@@ -2912,13 +3035,14 @@ function ProfessionalCard({
             name="Fernando"
             total={daily.fernando}
             adjustment={daily.fernandoAdjustment}
+            tips={daily.fernandoTips}
             expenses={daily.fernandoExpenses}
           />
         </div>
       </div>
       <div className="mt-4 grid gap-2 rounded-xl border border-white/10 p-3 text-xs text-white/65 sm:grid-cols-2">
-        <span>Flávio no mês: {money.format(professionalBalance(monthly.flavio, 0, 0, monthly.flavioAdjustment) / 100)}</span>
-        <span>Fernando no mês: {money.format(professionalBalance(monthly.fernando, 0, 0, monthly.fernandoAdjustment) / 100)}</span>
+        <span>Flávio no mês: {money.format(professionalBalance(monthly.flavio, 0, 0, monthly.flavioAdjustment, monthly.flavioTips) / 100)}</span>
+        <span>Fernando no mês: {money.format(professionalBalance(monthly.fernando, 0, 0, monthly.fernandoAdjustment, monthly.fernandoTips) / 100)}</span>
       </div>
     </section>
   );
@@ -2929,14 +3053,16 @@ function PersonSummary({
   expenses = 0,
   paidShare = 0,
   adjustment = 0,
+  tips = 0,
 }: {
   name: string;
   total: number;
   expenses?: number;
   paidShare?: number;
   adjustment?: number;
+  tips?: number;
 }) {
-  const share = professionalBalance(total, expenses, paidShare, adjustment);
+  const share = professionalBalance(total, expenses, paidShare, adjustment, tips);
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -2946,8 +3072,8 @@ function PersonSummary({
         </span>
       </div>
       <div className="mt-2 flex justify-between gap-2 text-xs opacity-60">
-        <span>Profissional: {money.format((total * 0.6 + adjustment) / 100)}</span>
-        <span>Barbearia: {money.format((total * 0.4 - adjustment) / 100)}</span>
+        <span>Profissional: {money.format(professionalBalance(total, 0, 0, adjustment, tips) / 100)}</span>
+        <span>Barbearia: {money.format(shopServiceShare(total - tips, adjustment) / 100)}</span>
       </div>
       {paidShare > 0 && (
         <div className="mt-2 flex justify-between gap-2 text-xs">
@@ -2955,7 +3081,7 @@ function PersonSummary({
           <span>-{money.format(paidShare / 100)}</span>
         </div>
       )}
-      {(expenses > 0 || paidShare > 0) && (
+      {(expenses > 0 || paidShare > 0 || adjustment !== 0) && (
         <div className="mt-2 flex justify-between gap-2 text-xs">
           {expenses > 0 && <span className="text-red-600">
             Gastos dele: -{money.format(expenses / 100)}

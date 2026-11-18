@@ -9,6 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --experimental-strip-types --test lib/payment-totals.test.mjs",
     "lint": "oxlint",
     "format": "oxfmt",
     "db:generate": "echo Schema PostgreSQL gerenciado em db/postgres.ts"
